@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="labnote">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>labnote</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+
+  <!-- ✅ 1) 브라우저 영구 저장소 요청 (앱 시작 전에 실행) -->
+  <script>
+    (async () => {
+      try {
+        const s = navigator.storage;
+        if (!s) {
+          console.log("[storage] navigator.storage not available");
+          return;
+        }
+
+        // 현재 상태 확인
+        if (s.persisted) {
+          console.log("[storage] persisted(before):", await s.persisted());
+        }
+
+        // 영구화 요청
+        if (s.persist) {
+          const granted = await s.persist();
+          console.log("[storage] persist granted:", granted);
+        } else {
+          console.log("[storage] persist() not supported");
+        }
+
+        // 요청 후 상태 재확인
+        if (s.persisted) {
+          console.log("[storage] persisted(after):", await s.persisted());
+        }
+      } catch (e) {
+        console.warn("[storage] persist error:", e);
+      }
+    })();
+  </script>
+
+  <!-- ✅ 2) flutter_bootstrap.js는 그 다음에 로드 -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

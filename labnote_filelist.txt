@@ -1,0 +1,11 @@
+﻿
+== D:\coding\exnote\exnote\labnote\android\app\src\main\kotlin\com\example\labnote ==
+MainActivity.kt
+
+== D:\coding\exnote\exnote\labnote\build\app\intermediates\java_res\debug\processDebugJavaRes\out\com\example\labnote ==
+
+== D:\coding\exnote\exnote\labnote\build\app\intermediates\project_dex_archive\debug\dexBuilderDebug\out\com\example\labnote ==
+MainActivity.dex
+
+== D:\coding\exnote\exnote\labnote\build\app\tmp\kotlin-classes\debug\com\example\labnote ==
+MainActivity.class
