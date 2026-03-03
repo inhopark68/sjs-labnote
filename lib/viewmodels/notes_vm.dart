@@ -35,7 +35,7 @@ class NotesVM extends ChangeNotifier {
   final NotesRepository _db;
 
   NotesVM(this._db) {
-    unawaited(_bootstrap());
+    _bootstrap(); // unawaited 제거
   }
 
   bool _isLoading = false;
@@ -52,7 +52,6 @@ class NotesVM extends ChangeNotifier {
 
   bool _bootstrapped = false;
 
-  /// 첫 실행 시 비어있으면 샘플 1개 생성
   Future<void> _bootstrap() async {
     if (_bootstrapped) return;
     _bootstrapped = true;
@@ -78,7 +77,7 @@ class NotesVM extends ChangeNotifier {
 
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
-      unawaited(refresh());
+      refresh(); // unawaited 제거
     });
   }
 
@@ -87,6 +86,7 @@ class NotesVM extends ChangeNotifier {
 
     _setLoading(true);
     try {
+      // ✅ limit/offset을 쓰지 않아도 기존 동작 유지
       final notes = await _db.listNotes(query: _query);
       if (token != _refreshToken) return;
 
@@ -128,7 +128,7 @@ class NotesVM extends ChangeNotifier {
   Future<void> deleteNoteById(String id) async {
     _setLoading(true);
     try {
-      await _db.deleteNote(id);
+      await _db.deleteNote(id); // 포지셔널
       await refresh();
     } finally {
       _setLoading(false);

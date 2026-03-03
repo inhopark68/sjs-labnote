@@ -8,12 +8,12 @@ import 'package:labnote/data/app_database.dart';
 import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/services/backup_service.dart';
 
-/// 홈 화면 상태/로직(ViewModel)
 class HomeVm extends ChangeNotifier {
   final AppDatabase _data;
 
   HomeVm(this._data);
 
+  // UI state
   bool searchVisible = false;
   String query = '';
 
@@ -27,31 +27,6 @@ class HomeVm extends ChangeNotifier {
   int _page = 0;
 
   Timer? _searchDebounce;
-
-  // 더미 목록 (화면 확인용)
-  late final List<NoteListItem> _all = List.generate(55, (i) {
-    final now = DateTime.now();
-    return NoteListItem(
-      id: 'note_${i + 1}',
-      title: '노트 ${i + 1}',
-      bodyPreview: '미리보기 내용... (${i + 1})',
-      createdAt: now.subtract(Duration(days: i)),
-      updatedAt: now.subtract(Duration(hours: i)),
-      isPinned: i % 13 == 0,
-      isLocked: i % 17 == 0,
-      attachmentCount: i % 4,
-      reagentCount: i % 7,
-      cellCount: i % 3,
-      equipmentCount: i % 5,
-      hasExpiredReagent: i % 19 == 0,
-      hasExpiringSoon: i % 11 == 0,
-      tagNames: [
-        if (i % 2 == 0) 'PCR',
-        if (i % 3 == 0) 'Day${(i % 5) + 1}',
-        if (i % 4 == 0) 'Sample-${(i % 8) + 1}',
-      ],
-    );
-  });
 
   @override
   void dispose() {
@@ -77,6 +52,10 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
   }
 
+  // -------------------------
+  // DB pagination
+  // -------------------------
+
   Future<void> refresh() async {
     loading = true;
     loadingMore = false;
@@ -85,16 +64,25 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final filtered = _applyQuery(_all, query);
-      final slice = _pageSlice(filtered, page: _page);
+      // ✅ pageSize+1 로 hasMore 판정
+      final fetched = await _data.listNotes(
+        query: query.trim(),
+        limit: _pageSize + 1,
+        offset: 0,
+      );
+
+      hasMore = fetched.length > _pageSize;
+
+      final pageNotes = fetched.take(_pageSize);
+      final pageItems = pageNotes.map(_toListItem).toList(growable: false);
 
       items
         ..clear()
-        ..addAll(slice);
-
-      hasMore = items.length < filtered.length;
-
-      // TODO: 실제 DB 연동 시 _data 사용
+        ..addAll(pageItems);
+    } catch (e, st) {
+      debugPrint('HomeVm.refresh failed: $e');
+      debugPrint('$st');
+      rethrow;
     } finally {
       loading = false;
       notifyListeners();
@@ -108,57 +96,67 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final filtered = _applyQuery(_all, query);
+      final nextPage = _page + 1;
 
-      _page += 1;
-      final slice = _pageSlice(filtered, page: _page);
+      final fetched = await _data.listNotes(
+        query: query.trim(),
+        limit: _pageSize + 1,
+        offset: nextPage * _pageSize,
+      );
 
-      if (slice.isEmpty) {
-        hasMore = false;
-        return;
-      }
+      final more = fetched.take(_pageSize).map(_toListItem).toList(growable: false);
+      items.addAll(more);
 
-      items.addAll(slice);
-      hasMore = items.length < filtered.length;
+      _page = nextPage;
+      hasMore = fetched.length > _pageSize;
     } finally {
       loadingMore = false;
       notifyListeners();
     }
   }
 
-  List<NoteListItem> _applyQuery(List<NoteListItem> src, String q) {
-    final qq = q.trim().toLowerCase();
-    if (qq.isEmpty) return src;
+  // -------------------------
+  // Note -> NoteListItem
+  // -------------------------
 
-    return src.where((n) {
-      return n.title.toLowerCase().contains(qq) ||
-          n.bodyPreview.toLowerCase().contains(qq) ||
-          n.tagNames.any((t) => t.toLowerCase().contains(qq));
-    }).toList();
+  String _preview(String body) {
+    final s = body.replaceAll('\n', ' ').trim();
+    return s.length <= 80 ? s : '${s.substring(0, 80)}…';
   }
 
-  List<NoteListItem> _pageSlice(List<NoteListItem> src, {required int page}) {
-    final start = page * _pageSize;
-    if (start >= src.length) return const [];
-    final end = (start + _pageSize).clamp(0, src.length);
-    return src.sublist(start, end);
+  NoteListItem _toListItem(Note n) {
+    return NoteListItem(
+      id: n.id,
+      title: n.title,
+      bodyPreview: _preview(n.body),
+      createdAt: n.createdAt,
+      updatedAt: n.updatedAt,
+      isPinned: n.isPinned,
+      isLocked: n.isLocked,
+      attachmentCount: 0,
+      reagentCount: 0,
+      cellCount: 0,
+      equipmentCount: 0,
+      hasExpiredReagent: false,
+      hasExpiringSoon: false,
+      tagNames: [
+        if (n.project != null && n.project!.trim().isNotEmpty) n.project!.trim(),
+      ],
+    );
   }
 
   // ----------------------------------------------------------------------
-  // Backup actions (BackupService의 실제 API에 맞춤)
+  // Backup actions
   // ----------------------------------------------------------------------
 
-  /// ✅ 간단 백업: 비밀번호 없이(평문) 내보내기
   Future<void> exportBackupPlain(BuildContext context) async {
     final svc = context.read<BackupService>();
     await svc.exportBackup(password: null);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('백업 내보내기 완료')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('백업 내보내기 완료')));
   }
 
-  /// ✅ 복원: 파일 선택 → 암호화 여부 확인 → (필요시) 비번 입력 → PRE-RESTORE 비번 입력 → 복원
   Future<void> importBackupWithPreRestore(BuildContext context) async {
     final svc = context.read<BackupService>();
 
@@ -168,13 +166,12 @@ class HomeVm extends ChangeNotifier {
     bool isEncrypted = false;
     try {
       final decoded = jsonDecode(raw);
-      isEncrypted =
-          decoded is Map<String, dynamic> && decoded['encrypted'] == true;
+      isEncrypted = decoded is Map<String, dynamic> && decoded['encrypted'] == true;
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('백업 파일 형식이 올바르지 않습니다.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('백업 파일 형식이 올바르지 않습니다.')),
+      );
       return;
     }
 
@@ -183,14 +180,13 @@ class HomeVm extends ChangeNotifier {
       importPw = await _askPassword(context, title: '백업 비밀번호 입력');
       if (importPw == null || importPw.isEmpty) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('암호화된 백업은 비밀번호가 필요합니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('암호화된 백업은 비밀번호가 필요합니다.')),
+        );
         return;
       }
     }
 
-    // PRE-RESTORE 백업 비밀번호(안전장치)
     final prePw = await _askPassword(
       context,
       title: '복원 전 자동 백업(PRE-RESTORE) 비밀번호 입력',
@@ -209,10 +205,12 @@ class HomeVm extends ChangeNotifier {
       importPassword: importPw,
     );
 
+    // ✅ 복원 후 홈 리스트 갱신
+    await refresh();
+
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('백업 복원 완료')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('백업 복원 완료')));
   }
 
   Future<String?> _askPassword(

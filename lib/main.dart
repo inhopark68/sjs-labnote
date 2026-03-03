@@ -1,695 +1,136 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// ✅ 기존 프로젝트 것들
-import 'data/app_database.dart';
-import 'pages/note_edit_page.dart';
-import 'services/backup_service.dart';
-import 'services/backup_service_impl.dart';
-import 'viewmodels/app_settings.dart';
-import 'viewmodels/notes_vm.dart';
+// -----------------------------
+// 프로젝트 내부 모듈 import
+// -----------------------------
+import 'data/app_database.dart'; // Drift 기반 DB (NotesRepository 구현체)
+import 'dao/note_dao.dart'; // 노트 관련 DAO(프로젝트에서 따로 쓰는 경우)
+import 'features/home/home_screen.dart'; // 앱 시작 화면(현재는 NotesPage를 감싸는 홈)
+import 'features/home/home_vm.dart'; // 홈 화면용 ViewModel(대시보드로 확장 시 사용)
+import 'features/notes/notes_page.dart'; // 노트 목록 화면
+import 'repositories/reagent_repository_drift.dart'; // 기타 도메인 repository (drift)
+import 'services/attachment_storage.dart'; // 첨부파일 저장소 팩토리(createAttachmentStorage)
+import 'services/backup_service.dart'; // 백업 서비스 인터페이스
+import 'services/backup_service_impl.dart'; // 백업 서비스 구현체(암호화/플랫폼 I/O)
+import 'services/image_compressor.dart'; // 이미지 압축 서비스
+import 'viewmodels/app_settings.dart'; // 앱 설정(다크모드 등) 상태/저장
+import 'viewmodels/notes_vm.dart'; // 노트 목록/검색/CRUD ViewModel
 
-// ✅ NoteSheet/Home에서 필요한 것들
-import 'dao/note_dao.dart';
-import 'services/attachment_storage.dart'; // createAttachmentStorage()
-import 'services/image_compressor.dart';
-import 'repositories/reagent_repository_drift.dart';
-
-// ✅ 새 홈(인덱스) 화면 연결
-import 'features/home/home_screen.dart';
-import 'features/home/home_vm.dart';
-
-void main() async {
+/// 앱 진입점
+Future<void> main() async {
+  // Flutter 엔진 초기화 (비동기 작업 전에 필수)
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 앱 설정 로드 (예: 다크모드 on/off를 로컬에서 읽어옴)
   final appSettings = AppSettings();
   await appSettings.load();
 
+  // Provider 트리 구성 후 앱 실행
   runApp(
     MultiProvider(
       providers: [
-<<<<<<< HEAD
-        Provider<AppDatabase>(
-          create: (_) => AppDatabase(), // ✅ Drift DB는 내부에서 open
-          dispose: (_, db) {
-            db.close(); // ignore: discarded_futures
-          },
-        ),
-
-=======
-        // ---- DB ----
+        // -----------------------------
+        // DB Provider
+        // -----------------------------
+        // AppDatabase는 Drift DB이며, NotesRepository를 implements 하도록 구성되어 있음.
+        // dispose에서 close()를 호출해 리소스 정리.
         Provider<AppDatabase>(
           create: (_) => AppDatabase(),
           dispose: (_, db) => db.close(),
         ),
 
-        // ---- Settings ----
+        // -----------------------------
+        // Settings Provider
+        // -----------------------------
+        // 이미 만들어둔 appSettings 인스턴스를 그대로 주입
         ChangeNotifierProvider<AppSettings>.value(value: appSettings),
 
-        // ---- Services ----
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
+        // -----------------------------
+        // Services Providers
+        // -----------------------------
+        // BackupService: 구현체(BackupServiceImpl)에 DB를 주입해서 생성
         Provider<BackupService>(
           create: (ctx) => BackupServiceImpl(ctx.read<AppDatabase>()),
         ),
 
-<<<<<<< HEAD
-        ChangeNotifierProvider<AppSettings>.value(value: appSettings),
-=======
-        Provider<NoteDao>(create: (ctx) => NoteDao(ctx.read<AppDatabase>())),
+        // NoteDao: DB를 주입해서 생성
+        Provider<NoteDao>(
+          create: (ctx) => NoteDao(ctx.read<AppDatabase>()),
+        ),
 
-        // ✅ 플랫폼별 storage 구현체 생성 팩토리
-        Provider<AttachmentStorage>(create: (_) => createAttachmentStorage()),
+        // AttachmentStorage: 플랫폼별 구현을 팩토리로 생성
+        Provider<AttachmentStorage>(
+          create: (_) => createAttachmentStorage(),
+        ),
 
-        Provider<ImageCompressor>(create: (_) => ImageCompressor()),
+        // ImageCompressor: 이미지 처리 유틸 서비스
+        Provider<ImageCompressor>(
+          create: (_) => ImageCompressor(),
+        ),
 
+        // ReagentRepositoryDrift: 기타 도메인 repo (DB 주입)
         Provider<ReagentRepositoryDrift>(
           create: (ctx) => ReagentRepositoryDrift(ctx.read<AppDatabase>()),
         ),
 
-        // ---- Existing notes VM (기존 화면 유지용) ----
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
+        // -----------------------------
+        // ViewModels Providers
+        // -----------------------------
+        // NotesVM: 노트 목록/검색/CRUD 담당
+        // NotesVM은 NotesRepository를 받는데, AppDatabase가 이를 implements 함.
         ChangeNotifierProvider<NotesVM>(
           create: (ctx) => NotesVM(ctx.read<AppDatabase>()),
         ),
 
-        // ---- HomeScreen VM (DI 주입) ----
+        // HomeVm: 홈(대시보드) 화면에서 사용할 VM
+        // 현재 HomeScreen이 NotesPage를 반환하더라도, 추후 홈 확장 대비해 주입 유지 가능.
         ChangeNotifierProvider<HomeVm>(
           create: (ctx) => HomeVm(ctx.read<AppDatabase>())..init(),
         ),
       ],
+
+      // 실제 위젯 트리 시작점
       child: const MyApp(),
     ),
   );
 }
 
+/// MaterialApp을 구성하는 최상위 위젯
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // AppSettings를 구독(watch)해서 설정 변경 시(MaterialApp 재빌드) 테마 반영
     final settings = context.watch<AppSettings>();
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'LabNote',
+
+      // Material 3 사용 + 다크모드/라이트모드 설정 반영
       theme: ThemeData(
         useMaterial3: true,
         brightness: settings.darkMode ? Brightness.dark : Brightness.light,
       ),
 
-      // ✅ 인덱스(첫 화면): HomeScreen
+      // -----------------------------
+      // 첫 화면(Entry Screen)
+      // -----------------------------
+      // home: 앱이 시작되면 최초로 보여줄 화면
+      // 현재 HomeScreen은 내부에서 NotesPage를 그대로 반환(홈=노트목록 UX)
       home: const HomeScreen(),
 
-      // ✅ 기존 NotesPage도 유지
-      routes: {'/notes': (_) => const NotesPage()},
-    );
-  }
-}
-
-<<<<<<< HEAD
-class NotesPage extends StatelessWidget {
-=======
-// ----------------------------------------------------------------------
-// 아래는 “기존 NotesPage” 그대로
-// ----------------------------------------------------------------------
-
-class NotesPage extends StatefulWidget {
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
-  const NotesPage({super.key});
-
-  @override
-  State<NotesPage> createState() => _NotesPageState();
-}
-
-class _NotesPageState extends State<NotesPage> {
-  late final TextEditingController _searchCtrl;
-  bool _isBusy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchCtrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _runWithTopLoading({
-    required Future<void> Function() job,
-    required String successMsg,
-    required String failPrefix,
-  }) async {
-    if (_isBusy) return;
-    setState(() => _isBusy = true);
-
-    try {
-      await job();
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(successMsg)));
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('$failPrefix: $e')));
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
-    }
-  }
-
-  Future<String?> _askPasswordForExport() async {
-    final pw1 = TextEditingController();
-    final pw2 = TextEditingController();
-    bool obscure = true;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('백업 암호화'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('비밀번호를 입력하면 백업이 AES로 암호화됩니다.\n(비워두면 평문 백업)'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: pw1,
-                obscureText: obscure,
-                decoration: InputDecoration(
-                  labelText: '비밀번호(선택)',
-                  suffixIcon: IconButton(
-                    tooltip: obscure ? '비밀번호 보기' : '비밀번호 숨기기',
-                    icon: Icon(
-                      obscure ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () => setLocal(() => obscure = !obscure),
-                  ),
-                ),
-              ),
-              TextField(
-                controller: pw2,
-                obscureText: obscure,
-                decoration: const InputDecoration(labelText: '비밀번호 확인'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('확인'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (ok != true) return null;
-
-    final a = pw1.text.trim();
-    final b = pw2.text.trim();
-
-    if (a.isEmpty && b.isEmpty) return '';
-
-    if (a.length < 4) {
-      if (!mounted) return null;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('비밀번호는 4자 이상을 권장합니다.')));
-      return null;
-    }
-
-    if (a != b) {
-      if (!mounted) return null;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('비밀번호가 일치하지 않습니다.')));
-      return null;
-    }
-
-    return a;
-  }
-
-  Future<String?> _askPasswordForImport() async {
-    final pw = TextEditingController();
-    bool obscure = true;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('비밀번호 입력'),
-          content: TextField(
-            controller: pw,
-            obscureText: obscure,
-            decoration: InputDecoration(
-              labelText: '백업 비밀번호',
-              suffixIcon: IconButton(
-                tooltip: obscure ? '비밀번호 보기' : '비밀번호 숨기기',
-                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setLocal(() => obscure = !obscure),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('확인'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (ok != true) return null;
-    return pw.text.trim();
-  }
-
-  Future<void> _exportBackupUx() async {
-    final password = await _askPasswordForExport();
-    if (password == null) return;
-
-    await _runWithTopLoading(
-      job: () => context.read<BackupService>().exportBackup(
-        password: password.isEmpty ? null : password,
-      ),
-      successMsg: '백업 내보내기 완료',
-      failPrefix: '백업 내보내기 실패',
-    );
-  }
-
-  Future<void> _importBackupUx() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('백업을 불러올까요?'),
-        content: const Text(
-          '복원 전에 현재 데이터를 1회 자동 백업(PRE-RESTORE)으로 저장합니다.\n'
-          '그 다음 현재 노트가 백업 내용으로 "전체 교체"됩니다.\n'
-          '계속할까요?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('계속'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-
-    await _runWithTopLoading(
-      job: () async {
-        final svc = context.read<BackupService>();
-
-        final raw = await svc.pickRawBackupText();
-        if (raw == null) return;
-
-        bool isEncrypted = false;
-        try {
-          final decoded = jsonDecode(raw);
-          isEncrypted =
-              decoded is Map<String, dynamic> && decoded['encrypted'] == true;
-        } catch (_) {
-          throw StateError('백업 파일 형식이 올바르지 않습니다.');
-        }
-
-        String? importPw;
-        if (isEncrypted) {
-          importPw = await _askPasswordForImport();
-          if (importPw == null || importPw.isEmpty) {
-            throw StateError('암호화된 백업입니다. 비밀번호 입력이 필요합니다.');
-          }
-        }
-
-        String preBackupPw = importPw ?? '';
-        if (preBackupPw.isEmpty) {
-          final p = await _askPasswordForExport();
-          if (p == null || p.isEmpty) {
-            throw StateError('복원 전 자동 백업은 안전을 위해 비밀번호가 필요합니다.');
-          }
-          preBackupPw = p;
-        }
-
-        await svc.safeImportWithPreBackup(
-          rawBackupText: raw,
-          preBackupPassword: preBackupPw,
-          importPassword: importPw,
-        );
-
-        await context.read<NotesVM>().refresh();
+      // -----------------------------
+      // 라우팅 테이블
+      // -----------------------------
+      // Navigator.pushNamed(context, '/notes') 하면 NotesPage로 이동
+      // 현재는 home에서 이미 노트목록을 보여주지만,
+      // 나중에 HomeScreen을 대시보드로 확장할 경우를 대비해 유지
+      routes: {
+        '/notes': (_) => const NotesPage(),
       },
-      successMsg: '백업 복원 완료 (PRE-RESTORE 자동 백업 생성됨)',
-      failPrefix: '백업 복원 실패',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final vm = context.watch<NotesVM>();
-    final settings = context.watch<AppSettings>();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notes'),
-        actions: [
-          IconButton(
-            tooltip: '새로고침',
-<<<<<<< HEAD
-            onPressed: vm.isLoading ? null : () => context.read<NotesVM>().refresh(),
-=======
-            onPressed: _isBusy ? null : () => context.read<NotesVM>().refresh(),
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: '다크모드 토글',
-            onPressed: _isBusy
-                ? null
-                : () => context.read<AppSettings>().setDarkMode(
-                    !settings.darkMode,
-                  ),
-            icon: Icon(settings.darkMode ? Icons.dark_mode : Icons.light_mode),
-          ),
-          IconButton(
-            tooltip: '백업 내보내기',
-            icon: const Icon(Icons.ios_share),
-            onPressed: _isBusy ? null : _exportBackupUx,
-          ),
-          IconButton(
-            tooltip: '백업 가져오기',
-            icon: const Icon(Icons.upload_file),
-            onPressed: _isBusy ? null : _importBackupUx,
-          ),
-          IconButton(
-            tooltip: '새 노트',
-<<<<<<< HEAD
-            onPressed: () async {
-              final result =
-                  await Navigator.of(context).push<(String title, String body)>(
-                MaterialPageRoute(
-                  builder: (_) => const NoteEditPage(titleText: '새 노트'),
-                ),
-              );
-
-              if (result != null) {
-                final (title, body) = result;
-                await context.read<NotesVM>().addNote(title: title, body: body);
-              }
-            },
-=======
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
-            icon: const Icon(Icons.add),
-            onPressed: _isBusy
-                ? null
-                : () async {
-                    final result = await Navigator.of(context)
-                        .push<(String title, String body)>(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                const NoteEditPage(titleText: '새 노트'),
-                          ),
-                        );
-
-                    if (result != null) {
-                      final (title, body) = result;
-                      try {
-                        await context.read<NotesVM>().addNote(
-                          title: title,
-                          body: body,
-                        );
-
-                        final count = await context
-                            .read<NotesVM>()
-                            .debugCountAll();
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('저장 완료 / DB count=$count')),
-                        );
-                      } catch (e) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
-                      }
-                    }
-                  },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-<<<<<<< HEAD
-=======
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 150),
-            child: _isBusy
-                ? const LinearProgressIndicator(minHeight: 2)
-                : const SizedBox(height: 2),
-          ),
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: const InputDecoration(
-                hintText: '검색 (제목/내용)',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              onChanged: (v) => context.read<NotesVM>().setQuery(v),
-            ),
-          ),
-          Expanded(
-            child: vm.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : (vm.items.isEmpty
-                      ? const Center(child: Text('노트가 없습니다'))
-                      : ListView.separated(
-                          itemCount: vm.items.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final item = vm.items[index];
-
-<<<<<<< HEAD
-                          return ListTile(
-                            title: Text(item.title.isEmpty ? '(제목 없음)' : item.title),
-                            subtitle: Text(item.bodyPreview),
-                            trailing: IconButton(
-                              tooltip: item.isPinned ? '고정 해제' : '상단 고정',
-                              onPressed: () async {
-                                await context.read<NotesVM>().togglePin(item.id);
-                              },
-                              icon: Icon(item.isPinned
-                                  ? Icons.push_pin
-                                  : Icons.push_pin_outlined),
-                            ),
-                            onTap: () async {
-                              // ✅ 원문 로드
-                              final detail =
-                                  await context.read<NotesVM>().getNote(item.id);
-
-                              final result = await Navigator.of(context)
-                                  .push<(String title, String body)>(
-                                MaterialPageRoute(
-                                  builder: (_) => NoteEditPage(
-                                    titleText: '노트 수정',
-                                    initialTitle: detail.title,
-                                    initialBody: detail.body,
-                                  ),
-                                ),
-                              );
-
-                              if (result != null) {
-                                final (title, body) = result;
-                                await context.read<NotesVM>().updateNote(
-                                      id: item.id,
-                                      title: title,
-                                      body: body,
-                                    );
-                              }
-                            },
-                            onLongPress: () {
-                              final id = item.id;
-
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('삭제할까요?'),
-                                  content: Text(
-                                    item.title.isEmpty ? '(제목 없음)' : item.title,
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('취소'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () async {
-                                        Navigator.pop(context);
-                                        await context.read<NotesVM>().deleteNoteById(id);
-=======
-                            return ListTile(
-                              title: Text(
-                                item.title.isEmpty ? '(제목 없음)' : item.title,
-                              ),
-                              subtitle: Text(item.bodyPreview),
-                              trailing: IconButton(
-                                tooltip: item.isPinned ? '고정 해제' : '상단 고정',
-                                icon: Icon(
-                                  item.isPinned
-                                      ? Icons.push_pin
-                                      : Icons.push_pin_outlined,
-                                ),
-                                onPressed: _isBusy
-                                    ? null
-                                    : () async {
-                                        try {
-                                          await context
-                                              .read<NotesVM>()
-                                              .togglePin(item.id);
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text('핀 변경 실패: $e'),
-                                            ),
-                                          );
-                                        }
->>>>>>> c0d9cc10fb9f9d4d6e2435b93ad1afa17fb614f3
-                                      },
-                              ),
-                              onTap: _isBusy
-                                  ? null
-                                  : () async {
-                                      final result = await Navigator.of(context)
-                                          .push<(String title, String body)>(
-                                            MaterialPageRoute(
-                                              builder: (_) => NoteEditPage(
-                                                titleText: '노트 수정',
-                                                initialTitle: item.title,
-                                                initialBody: item.body,
-                                              ),
-                                            ),
-                                          );
-
-                                      if (result != null) {
-                                        final (title, body) = result;
-                                        try {
-                                          await context
-                                              .read<NotesVM>()
-                                              .updateNote(
-                                                id: item.id,
-                                                title: title,
-                                                body: body,
-                                              );
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('수정 완료'),
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text('수정 실패: $e'),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                              onLongPress: _isBusy
-                                  ? null
-                                  : () {
-                                      final rootContext = context;
-                                      final id = item.id;
-
-                                      showDialog(
-                                        context: rootContext,
-                                        builder: (_) => AlertDialog(
-                                          title: const Text('삭제할까요?'),
-                                          content: Text(
-                                            item.title.isEmpty
-                                                ? '(제목 없음)'
-                                                : item.title,
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(rootContext),
-                                              child: const Text('취소'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () async {
-                                                try {
-                                                  await rootContext
-                                                      .read<NotesVM>()
-                                                      .deleteNoteById(id);
-                                                  if (!mounted) return;
-
-                                                  Navigator.pop(rootContext);
-                                                  ScaffoldMessenger.of(
-                                                    rootContext,
-                                                  ).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('삭제 완료'),
-                                                    ),
-                                                  );
-                                                } catch (e) {
-                                                  if (!mounted) return;
-                                                  ScaffoldMessenger.of(
-                                                    rootContext,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        '삭제 실패: $e',
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                              child: const Text('삭제'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                            );
-                          },
-                        )),
-          ),
-        ],
-      ),
     );
   }
 }
