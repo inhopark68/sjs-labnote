@@ -23,7 +23,7 @@ dependencies:
   mobile_scanner: ^5.0.0
 
   # OCR + Photo
-  image_picker: ^1.0.0
+  image_picker: ^1.0.7
   google_mlkit_text_recognition: ^0.13.0
 
   # Image processing (pure Dart)
@@ -35,7 +35,7 @@ dependencies:
   encrypt: ^5.0.1
 
   # File paths
-  path_provider: ^2.1.5
+  path_provider: ^2.1.2
   path: ^1.9.0
 
   # Android export to Downloads

@@ -1,9 +1,11 @@
-// lib/features/home/home_screen.dart 최종본 (HomeVm 연결)
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:labnote/data/app_database.dart';
+import 'package:labnote/features/notes/note_detail_page.dart';
+
 import 'home_vm.dart';
+import '../trash/trash_screen.dart'; // 경로 맞게
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _scrollCtrl = ScrollController();
+  bool _inited = false;
 
   @override
   void initState() {
@@ -30,6 +33,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_inited) return;
+    _inited = true;
+
+    // 홈 진입 시 1회 초기화
+    Future.microtask(() => context.read<HomeVm>().init());
+  }
+
+  @override
   void dispose() {
     _scrollCtrl.dispose();
     super.dispose();
@@ -38,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<HomeVm>();
+    final db = context.read<AppDatabase>();
 
     return Scaffold(
       appBar: AppBar(
@@ -53,18 +67,18 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: vm.loading ? null : vm.refresh,
           ),
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (v == 'export') {
-                await vm.exportBackupPlain(context);
-              } else if (v == 'import') {
-                await vm.importBackupWithPreRestore(context);
-              }
+
+          IconButton(
+            tooltip: '휴지통',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TrashScreen()),
+              );
+              // 휴지통에서 복원/삭제 후 돌아오면 목록 갱신
+              context.read<HomeVm>().init(); // 또는 loadMore 구조에 맞춰 갱신 메서드 호출
             },
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(value: 'export', child: Text('백업 내보내기(평문)')),
-              PopupMenuItem(value: 'import', child: Text('백업 가져오기(PRE-RESTORE)')),
-            ],
           ),
         ],
         bottom: vm.searchVisible
@@ -75,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: TextField(
                     autofocus: true,
                     decoration: const InputDecoration(
-                      hintText: '검색(제목/미리보기/태그)',
+                      hintText: '검색(제목/본문)',
                       prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(),
                       isDense: true,
@@ -108,36 +122,101 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       final item = vm.items[index];
 
-                      return ListTile(
-                        title: Text(item.title.isEmpty ? '(제목 없음)' : item.title),
-                        subtitle: Text(item.bodyPreview),
-                        leading: item.isPinned
-                            ? const Icon(Icons.push_pin)
-                            : const SizedBox.shrink(),
-                        trailing: Wrap(
-                          spacing: 8,
-                          children: [
-                            if (item.hasExpiringSoon || item.hasExpiredReagent)
-                              Icon(
-                                item.hasExpiredReagent
-                                    ? Icons.warning_amber
-                                    : Icons.schedule,
-                              ),
-                            if (item.attachmentCount > 0)
-                              Chip(
-                                label: Text('📎 ${item.attachmentCount}'),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                          ],
+                      // ✅ 스와이프 삭제 + Undo
+                      return Dismissible(
+                        key: ValueKey(item.id),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 16),
+                          color: Colors.red,
+                          child: const Icon(Icons.delete, color: Colors.white),
                         ),
-                        onTap: () {
-                          // TODO: 노트 상세/편집으로 이동 (원하면 라우팅까지 같이 정리해줄게요)
+                        confirmDismiss: (_) async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('삭제할까요?'),
+                              content: const Text('노트가 삭제됨으로 표시됩니다.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('취소'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('삭제'),
+                                ),
+                              ],
+                            ),
+                          );
+                          return ok == true;
                         },
+                        onDismissed: (_) async {
+                          await db.deleteNote(item.id);
+
+                          if (!context.mounted) return;
+
+                          ScaffoldMessenger.of(context).clearSnackBars();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('삭제됨'),
+                              action: SnackBarAction(
+                                label: '되돌리기',
+                                onPressed: () async {
+                                  await db.restoreNote(item.id);
+                                  if (context.mounted) {
+                                    await vm.refresh();
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+
+                          await vm.refresh();
+                        },
+                        child: ListTile(
+                          title:
+                              Text(item.title.isEmpty ? '(제목 없음)' : item.title),
+                          subtitle: Text(item.bodyPreview),
+                          leading: item.isPinned
+                              ? const Icon(Icons.push_pin)
+                              : const SizedBox.shrink(),
+                          onTap: () async {
+                            final changed = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NoteDetailPage(noteId: item.id),
+                              ),
+                            );
+                            if (changed == true) {
+                              await vm.refresh();
+                            }
+                          },
+                        ),
                       );
                     },
                   ),
                 ),
-      // 하단 상태 표시(선택)
+      floatingActionButton: FloatingActionButton(
+        tooltip: '새 노트',
+        child: const Icon(Icons.add),
+        onPressed: () async {
+          final id = await vm.insertEmptyAndReturnId();
+          final changed = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(builder: (_) => NoteDetailPage(noteId: id)),
+          );
+
+          // 돌아오면 목록 갱신
+          if (changed == true) {
+            await vm.refresh();
+          } else {
+            await vm.refresh();
+          }
+        },
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: (vm.hasMore && !vm.loading && vm.items.isNotEmpty)
           ? const SafeArea(
               child: Padding(

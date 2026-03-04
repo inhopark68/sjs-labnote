@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,7 +14,6 @@ class HomeVm extends ChangeNotifier {
 
   HomeVm(this._data);
 
-  // UI state
   bool searchVisible = false;
   String query = '';
 
@@ -34,7 +34,19 @@ class HomeVm extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> init() async => refresh();
+  Future<void> init() async {
+    final all = await _data.debugCountAllRows();
+    if (all == 0) {
+      await _data.insertNote(title: '첫 노트', body: 'DB 연결 테스트');
+    }
+    await refresh();
+  }
+  Future<String> insertEmptyAndReturnId() async {
+    // insertNote는 AppDatabase에서 id를 반환하도록 구현되어 있음
+    final id = await _data.insertNote(title: '', body: '');
+    return id;
+  }
+
 
   void toggleSearch() {
     searchVisible = !searchVisible;
@@ -55,7 +67,6 @@ class HomeVm extends ChangeNotifier {
   // -------------------------
   // DB pagination
   // -------------------------
-
   Future<void> refresh() async {
     loading = true;
     loadingMore = false;
@@ -64,7 +75,17 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // ✅ pageSize+1 로 hasMore 판정
+      final all = await _data.debugCountAllRows();
+      final visible = await _data.debugCountVisibleRows();
+      debugPrint('DB rows(all incl deleted)=$all, visible(not deleted)=$visible');
+
+      // ✅ 웹에서는 전체 fetch 금지: 5개만 샘플로 가져와 로그
+      // (비웹에서도 동일하게 5개만 가져오므로 안전)
+      final sample = await _data.debugSampleRowsIncludingDeleted(limit: 5);
+      for (final r in sample) {
+        debugPrint('row id=${r.id}, deleted=${r.isDeleted}, title=${r.title}');
+      }
+
       final fetched = await _data.listNotes(
         query: query.trim(),
         limit: _pageSize + 1,
@@ -79,10 +100,6 @@ class HomeVm extends ChangeNotifier {
       items
         ..clear()
         ..addAll(pageItems);
-    } catch (e, st) {
-      debugPrint('HomeVm.refresh failed: $e');
-      debugPrint('$st');
-      rethrow;
     } finally {
       loading = false;
       notifyListeners();
@@ -104,10 +121,12 @@ class HomeVm extends ChangeNotifier {
         offset: nextPage * _pageSize,
       );
 
-      final more = fetched.take(_pageSize).map(_toListItem).toList(growable: false);
-      items.addAll(more);
+      final moreItems =
+          fetched.take(_pageSize).map(_toListItem).toList(growable: false);
 
+      items.addAll(moreItems);
       _page = nextPage;
+
       hasMore = fetched.length > _pageSize;
     } finally {
       loadingMore = false;
@@ -118,7 +137,6 @@ class HomeVm extends ChangeNotifier {
   // -------------------------
   // Note -> NoteListItem
   // -------------------------
-
   String _preview(String body) {
     final s = body.replaceAll('\n', ' ').trim();
     return s.length <= 80 ? s : '${s.substring(0, 80)}…';
@@ -145,10 +163,9 @@ class HomeVm extends ChangeNotifier {
     );
   }
 
-  // ----------------------------------------------------------------------
-  // Backup actions
-  // ----------------------------------------------------------------------
-
+  // -------------------------
+  // Backup actions (BackupService v2 필요)
+  // -------------------------
   Future<void> exportBackupPlain(BuildContext context) async {
     final svc = context.read<BackupService>();
     await svc.exportBackup(password: null);
@@ -194,7 +211,9 @@ class HomeVm extends ChangeNotifier {
     if (prePw == null || prePw.isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PRE-RESTORE 자동 백업을 위해 비밀번호가 필요합니다.')),
+        const SnackBar(
+          content: Text('PRE-RESTORE 자동 백업을 위해 비밀번호가 필요합니다.'),
+        ),
       );
       return;
     }
@@ -205,7 +224,6 @@ class HomeVm extends ChangeNotifier {
       importPassword: importPw,
     );
 
-    // ✅ 복원 후 홈 리스트 갱신
     await refresh();
 
     if (!context.mounted) return;

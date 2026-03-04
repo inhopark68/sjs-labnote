@@ -14,17 +14,12 @@ import 'services/backup_service_impl.dart';
 
 import 'viewmodels/app_settings.dart';
 
-// void main() {runApp(MyApp());} 앱 실행만 하고 값을 반환하지 않음
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
 /// 앱 전체 DI(Provider) + MaterialApp 구성
-
-// @override는 **“부모(상위 클래스)나 인터페이스에 이미 선언된 메서드/프로퍼티를, 지금 클래스에서 재정의(덮어쓰기)한다”**는 표시입니다.
-// providers:는 “앱 전체에서 사용할 객체들을 여기서 미리 만들어 두겠다”는 뜻입니다.
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -45,9 +40,11 @@ class MyApp extends StatelessWidget {
 
         // 3) BackupService: HomeVm에서 사용 (export/import)
         Provider<BackupService>(
-          create: (ctx) => BackupServiceImpl(ctx.read<AppDatabase>()),
+          create: (ctx) => BackupServiceImpl(
+            db: ctx.read<AppDatabase>(),
+          ),
         ),
-        
+
         // 4) HomeVm: 첫 화면(HomeScreen)에서 사용
         ChangeNotifierProvider<HomeVm>(
           create: (ctx) => HomeVm(ctx.read<AppDatabase>()),

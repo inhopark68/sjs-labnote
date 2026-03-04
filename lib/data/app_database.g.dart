@@ -17,6 +17,17 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _noteDateMeta = const VerificationMeta(
+    'noteDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> noteDate = GeneratedColumn<DateTime>(
+    'note_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -118,6 +129,7 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    noteDate,
     title,
     body,
     createdAt,
@@ -143,6 +155,12 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('note_date')) {
+      context.handle(
+        _noteDateMeta,
+        noteDate.isAcceptableOrUnknown(data['note_date']!, _noteDateMeta),
+      );
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -209,6 +227,10 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
+      noteDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}note_date'],
+      ),
       title: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}title'],
@@ -252,6 +274,7 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
 
 class DbNote extends DataClass implements Insertable<DbNote> {
   final String id;
+  final DateTime? noteDate;
   final String title;
   final String body;
   final DateTime createdAt;
@@ -262,6 +285,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   final String? project;
   const DbNote({
     required this.id,
+    this.noteDate,
     required this.title,
     required this.body,
     required this.createdAt,
@@ -275,6 +299,9 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || noteDate != null) {
+      map['note_date'] = Variable<DateTime>(noteDate);
+    }
     map['title'] = Variable<String>(title);
     map['body'] = Variable<String>(body);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -291,6 +318,9 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   DbNotesCompanion toCompanion(bool nullToAbsent) {
     return DbNotesCompanion(
       id: Value(id),
+      noteDate: noteDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(noteDate),
       title: Value(title),
       body: Value(body),
       createdAt: Value(createdAt),
@@ -311,6 +341,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DbNote(
       id: serializer.fromJson<String>(json['id']),
+      noteDate: serializer.fromJson<DateTime?>(json['noteDate']),
       title: serializer.fromJson<String>(json['title']),
       body: serializer.fromJson<String>(json['body']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -326,6 +357,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'noteDate': serializer.toJson<DateTime?>(noteDate),
       'title': serializer.toJson<String>(title),
       'body': serializer.toJson<String>(body),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -339,6 +371,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
 
   DbNote copyWith({
     String? id,
+    Value<DateTime?> noteDate = const Value.absent(),
     String? title,
     String? body,
     DateTime? createdAt,
@@ -349,6 +382,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
     Value<String?> project = const Value.absent(),
   }) => DbNote(
     id: id ?? this.id,
+    noteDate: noteDate.present ? noteDate.value : this.noteDate,
     title: title ?? this.title,
     body: body ?? this.body,
     createdAt: createdAt ?? this.createdAt,
@@ -361,6 +395,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   DbNote copyWithCompanion(DbNotesCompanion data) {
     return DbNote(
       id: data.id.present ? data.id.value : this.id,
+      noteDate: data.noteDate.present ? data.noteDate.value : this.noteDate,
       title: data.title.present ? data.title.value : this.title,
       body: data.body.present ? data.body.value : this.body,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -376,6 +411,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   String toString() {
     return (StringBuffer('DbNote(')
           ..write('id: $id, ')
+          ..write('noteDate: $noteDate, ')
           ..write('title: $title, ')
           ..write('body: $body, ')
           ..write('createdAt: $createdAt, ')
@@ -391,6 +427,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   @override
   int get hashCode => Object.hash(
     id,
+    noteDate,
     title,
     body,
     createdAt,
@@ -405,6 +442,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
       identical(this, other) ||
       (other is DbNote &&
           other.id == this.id &&
+          other.noteDate == this.noteDate &&
           other.title == this.title &&
           other.body == this.body &&
           other.createdAt == this.createdAt &&
@@ -417,6 +455,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
 
 class DbNotesCompanion extends UpdateCompanion<DbNote> {
   final Value<String> id;
+  final Value<DateTime?> noteDate;
   final Value<String> title;
   final Value<String> body;
   final Value<DateTime> createdAt;
@@ -428,6 +467,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   final Value<int> rowid;
   const DbNotesCompanion({
     this.id = const Value.absent(),
+    this.noteDate = const Value.absent(),
     this.title = const Value.absent(),
     this.body = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -440,6 +480,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   });
   DbNotesCompanion.insert({
     required String id,
+    this.noteDate = const Value.absent(),
     this.title = const Value.absent(),
     this.body = const Value.absent(),
     required DateTime createdAt,
@@ -454,6 +495,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
        updatedAt = Value(updatedAt);
   static Insertable<DbNote> custom({
     Expression<String>? id,
+    Expression<DateTime>? noteDate,
     Expression<String>? title,
     Expression<String>? body,
     Expression<DateTime>? createdAt,
@@ -466,6 +508,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (noteDate != null) 'note_date': noteDate,
       if (title != null) 'title': title,
       if (body != null) 'body': body,
       if (createdAt != null) 'created_at': createdAt,
@@ -480,6 +523,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
 
   DbNotesCompanion copyWith({
     Value<String>? id,
+    Value<DateTime?>? noteDate,
     Value<String>? title,
     Value<String>? body,
     Value<DateTime>? createdAt,
@@ -492,6 +536,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   }) {
     return DbNotesCompanion(
       id: id ?? this.id,
+      noteDate: noteDate ?? this.noteDate,
       title: title ?? this.title,
       body: body ?? this.body,
       createdAt: createdAt ?? this.createdAt,
@@ -509,6 +554,9 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (noteDate.present) {
+      map['note_date'] = Variable<DateTime>(noteDate.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -544,6 +592,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   String toString() {
     return (StringBuffer('DbNotesCompanion(')
           ..write('id: $id, ')
+          ..write('noteDate: $noteDate, ')
           ..write('title: $title, ')
           ..write('body: $body, ')
           ..write('createdAt: $createdAt, ')
@@ -558,20 +607,1412 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   }
 }
 
+class $DbNoteReagentsTable extends DbNoteReagents
+    with TableInfo<$DbNoteReagentsTable, DbNoteReagent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DbNoteReagentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _catalogNumberMeta = const VerificationMeta(
+    'catalogNumber',
+  );
+  @override
+  late final GeneratedColumn<String> catalogNumber = GeneratedColumn<String>(
+    'catalog_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lotNumberMeta = const VerificationMeta(
+    'lotNumber',
+  );
+  @override
+  late final GeneratedColumn<String> lotNumber = GeneratedColumn<String>(
+    'lot_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _companyMeta = const VerificationMeta(
+    'company',
+  );
+  @override
+  late final GeneratedColumn<String> company = GeneratedColumn<String>(
+    'company',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memoMeta = const VerificationMeta('memo');
+  @override
+  late final GeneratedColumn<String> memo = GeneratedColumn<String>(
+    'memo',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    name,
+    catalogNumber,
+    lotNumber,
+    company,
+    memo,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'db_note_reagents';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbNoteReagent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('catalog_number')) {
+      context.handle(
+        _catalogNumberMeta,
+        catalogNumber.isAcceptableOrUnknown(
+          data['catalog_number']!,
+          _catalogNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('lot_number')) {
+      context.handle(
+        _lotNumberMeta,
+        lotNumber.isAcceptableOrUnknown(data['lot_number']!, _lotNumberMeta),
+      );
+    }
+    if (data.containsKey('company')) {
+      context.handle(
+        _companyMeta,
+        company.isAcceptableOrUnknown(data['company']!, _companyMeta),
+      );
+    }
+    if (data.containsKey('memo')) {
+      context.handle(
+        _memoMeta,
+        memo.isAcceptableOrUnknown(data['memo']!, _memoMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbNoteReagent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbNoteReagent(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      catalogNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}catalog_number'],
+      ),
+      lotNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lot_number'],
+      ),
+      company: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}company'],
+      ),
+      memo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memo'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DbNoteReagentsTable createAlias(String alias) {
+    return $DbNoteReagentsTable(attachedDatabase, alias);
+  }
+}
+
+class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
+  final String id;
+  final String noteId;
+  final String name;
+  final String? catalogNumber;
+  final String? lotNumber;
+  final String? company;
+  final String? memo;
+  final DateTime createdAt;
+  const DbNoteReagent({
+    required this.id,
+    required this.noteId,
+    required this.name,
+    this.catalogNumber,
+    this.lotNumber,
+    this.company,
+    this.memo,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['note_id'] = Variable<String>(noteId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || catalogNumber != null) {
+      map['catalog_number'] = Variable<String>(catalogNumber);
+    }
+    if (!nullToAbsent || lotNumber != null) {
+      map['lot_number'] = Variable<String>(lotNumber);
+    }
+    if (!nullToAbsent || company != null) {
+      map['company'] = Variable<String>(company);
+    }
+    if (!nullToAbsent || memo != null) {
+      map['memo'] = Variable<String>(memo);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DbNoteReagentsCompanion toCompanion(bool nullToAbsent) {
+    return DbNoteReagentsCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      name: Value(name),
+      catalogNumber: catalogNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(catalogNumber),
+      lotNumber: lotNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lotNumber),
+      company: company == null && nullToAbsent
+          ? const Value.absent()
+          : Value(company),
+      memo: memo == null && nullToAbsent ? const Value.absent() : Value(memo),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DbNoteReagent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbNoteReagent(
+      id: serializer.fromJson<String>(json['id']),
+      noteId: serializer.fromJson<String>(json['noteId']),
+      name: serializer.fromJson<String>(json['name']),
+      catalogNumber: serializer.fromJson<String?>(json['catalogNumber']),
+      lotNumber: serializer.fromJson<String?>(json['lotNumber']),
+      company: serializer.fromJson<String?>(json['company']),
+      memo: serializer.fromJson<String?>(json['memo']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'noteId': serializer.toJson<String>(noteId),
+      'name': serializer.toJson<String>(name),
+      'catalogNumber': serializer.toJson<String?>(catalogNumber),
+      'lotNumber': serializer.toJson<String?>(lotNumber),
+      'company': serializer.toJson<String?>(company),
+      'memo': serializer.toJson<String?>(memo),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DbNoteReagent copyWith({
+    String? id,
+    String? noteId,
+    String? name,
+    Value<String?> catalogNumber = const Value.absent(),
+    Value<String?> lotNumber = const Value.absent(),
+    Value<String?> company = const Value.absent(),
+    Value<String?> memo = const Value.absent(),
+    DateTime? createdAt,
+  }) => DbNoteReagent(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    name: name ?? this.name,
+    catalogNumber: catalogNumber.present
+        ? catalogNumber.value
+        : this.catalogNumber,
+    lotNumber: lotNumber.present ? lotNumber.value : this.lotNumber,
+    company: company.present ? company.value : this.company,
+    memo: memo.present ? memo.value : this.memo,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DbNoteReagent copyWithCompanion(DbNoteReagentsCompanion data) {
+    return DbNoteReagent(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      name: data.name.present ? data.name.value : this.name,
+      catalogNumber: data.catalogNumber.present
+          ? data.catalogNumber.value
+          : this.catalogNumber,
+      lotNumber: data.lotNumber.present ? data.lotNumber.value : this.lotNumber,
+      company: data.company.present ? data.company.value : this.company,
+      memo: data.memo.present ? data.memo.value : this.memo,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteReagent(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('name: $name, ')
+          ..write('catalogNumber: $catalogNumber, ')
+          ..write('lotNumber: $lotNumber, ')
+          ..write('company: $company, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    noteId,
+    name,
+    catalogNumber,
+    lotNumber,
+    company,
+    memo,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbNoteReagent &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.name == this.name &&
+          other.catalogNumber == this.catalogNumber &&
+          other.lotNumber == this.lotNumber &&
+          other.company == this.company &&
+          other.memo == this.memo &&
+          other.createdAt == this.createdAt);
+}
+
+class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
+  final Value<String> id;
+  final Value<String> noteId;
+  final Value<String> name;
+  final Value<String?> catalogNumber;
+  final Value<String?> lotNumber;
+  final Value<String?> company;
+  final Value<String?> memo;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const DbNoteReagentsCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.catalogNumber = const Value.absent(),
+    this.lotNumber = const Value.absent(),
+    this.company = const Value.absent(),
+    this.memo = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DbNoteReagentsCompanion.insert({
+    required String id,
+    required String noteId,
+    required String name,
+    this.catalogNumber = const Value.absent(),
+    this.lotNumber = const Value.absent(),
+    this.company = const Value.absent(),
+    this.memo = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       noteId = Value(noteId),
+       name = Value(name),
+       createdAt = Value(createdAt);
+  static Insertable<DbNoteReagent> custom({
+    Expression<String>? id,
+    Expression<String>? noteId,
+    Expression<String>? name,
+    Expression<String>? catalogNumber,
+    Expression<String>? lotNumber,
+    Expression<String>? company,
+    Expression<String>? memo,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (name != null) 'name': name,
+      if (catalogNumber != null) 'catalog_number': catalogNumber,
+      if (lotNumber != null) 'lot_number': lotNumber,
+      if (company != null) 'company': company,
+      if (memo != null) 'memo': memo,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DbNoteReagentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? noteId,
+    Value<String>? name,
+    Value<String?>? catalogNumber,
+    Value<String?>? lotNumber,
+    Value<String?>? company,
+    Value<String?>? memo,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return DbNoteReagentsCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      name: name ?? this.name,
+      catalogNumber: catalogNumber ?? this.catalogNumber,
+      lotNumber: lotNumber ?? this.lotNumber,
+      company: company ?? this.company,
+      memo: memo ?? this.memo,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<String>(noteId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (catalogNumber.present) {
+      map['catalog_number'] = Variable<String>(catalogNumber.value);
+    }
+    if (lotNumber.present) {
+      map['lot_number'] = Variable<String>(lotNumber.value);
+    }
+    if (company.present) {
+      map['company'] = Variable<String>(company.value);
+    }
+    if (memo.present) {
+      map['memo'] = Variable<String>(memo.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteReagentsCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('name: $name, ')
+          ..write('catalogNumber: $catalogNumber, ')
+          ..write('lotNumber: $lotNumber, ')
+          ..write('company: $company, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DbNoteMaterialsTable extends DbNoteMaterials
+    with TableInfo<$DbNoteMaterialsTable, DbNoteMaterial> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DbNoteMaterialsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _catalogNumberMeta = const VerificationMeta(
+    'catalogNumber',
+  );
+  @override
+  late final GeneratedColumn<String> catalogNumber = GeneratedColumn<String>(
+    'catalog_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lotNumberMeta = const VerificationMeta(
+    'lotNumber',
+  );
+  @override
+  late final GeneratedColumn<String> lotNumber = GeneratedColumn<String>(
+    'lot_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _companyMeta = const VerificationMeta(
+    'company',
+  );
+  @override
+  late final GeneratedColumn<String> company = GeneratedColumn<String>(
+    'company',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memoMeta = const VerificationMeta('memo');
+  @override
+  late final GeneratedColumn<String> memo = GeneratedColumn<String>(
+    'memo',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    name,
+    catalogNumber,
+    lotNumber,
+    company,
+    memo,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'db_note_materials';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbNoteMaterial> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('catalog_number')) {
+      context.handle(
+        _catalogNumberMeta,
+        catalogNumber.isAcceptableOrUnknown(
+          data['catalog_number']!,
+          _catalogNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('lot_number')) {
+      context.handle(
+        _lotNumberMeta,
+        lotNumber.isAcceptableOrUnknown(data['lot_number']!, _lotNumberMeta),
+      );
+    }
+    if (data.containsKey('company')) {
+      context.handle(
+        _companyMeta,
+        company.isAcceptableOrUnknown(data['company']!, _companyMeta),
+      );
+    }
+    if (data.containsKey('memo')) {
+      context.handle(
+        _memoMeta,
+        memo.isAcceptableOrUnknown(data['memo']!, _memoMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbNoteMaterial map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbNoteMaterial(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      catalogNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}catalog_number'],
+      ),
+      lotNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lot_number'],
+      ),
+      company: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}company'],
+      ),
+      memo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memo'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DbNoteMaterialsTable createAlias(String alias) {
+    return $DbNoteMaterialsTable(attachedDatabase, alias);
+  }
+}
+
+class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
+  final String id;
+  final String noteId;
+  final String name;
+  final String? catalogNumber;
+  final String? lotNumber;
+  final String? company;
+  final String? memo;
+  final DateTime createdAt;
+  const DbNoteMaterial({
+    required this.id,
+    required this.noteId,
+    required this.name,
+    this.catalogNumber,
+    this.lotNumber,
+    this.company,
+    this.memo,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['note_id'] = Variable<String>(noteId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || catalogNumber != null) {
+      map['catalog_number'] = Variable<String>(catalogNumber);
+    }
+    if (!nullToAbsent || lotNumber != null) {
+      map['lot_number'] = Variable<String>(lotNumber);
+    }
+    if (!nullToAbsent || company != null) {
+      map['company'] = Variable<String>(company);
+    }
+    if (!nullToAbsent || memo != null) {
+      map['memo'] = Variable<String>(memo);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DbNoteMaterialsCompanion toCompanion(bool nullToAbsent) {
+    return DbNoteMaterialsCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      name: Value(name),
+      catalogNumber: catalogNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(catalogNumber),
+      lotNumber: lotNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lotNumber),
+      company: company == null && nullToAbsent
+          ? const Value.absent()
+          : Value(company),
+      memo: memo == null && nullToAbsent ? const Value.absent() : Value(memo),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DbNoteMaterial.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbNoteMaterial(
+      id: serializer.fromJson<String>(json['id']),
+      noteId: serializer.fromJson<String>(json['noteId']),
+      name: serializer.fromJson<String>(json['name']),
+      catalogNumber: serializer.fromJson<String?>(json['catalogNumber']),
+      lotNumber: serializer.fromJson<String?>(json['lotNumber']),
+      company: serializer.fromJson<String?>(json['company']),
+      memo: serializer.fromJson<String?>(json['memo']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'noteId': serializer.toJson<String>(noteId),
+      'name': serializer.toJson<String>(name),
+      'catalogNumber': serializer.toJson<String?>(catalogNumber),
+      'lotNumber': serializer.toJson<String?>(lotNumber),
+      'company': serializer.toJson<String?>(company),
+      'memo': serializer.toJson<String?>(memo),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DbNoteMaterial copyWith({
+    String? id,
+    String? noteId,
+    String? name,
+    Value<String?> catalogNumber = const Value.absent(),
+    Value<String?> lotNumber = const Value.absent(),
+    Value<String?> company = const Value.absent(),
+    Value<String?> memo = const Value.absent(),
+    DateTime? createdAt,
+  }) => DbNoteMaterial(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    name: name ?? this.name,
+    catalogNumber: catalogNumber.present
+        ? catalogNumber.value
+        : this.catalogNumber,
+    lotNumber: lotNumber.present ? lotNumber.value : this.lotNumber,
+    company: company.present ? company.value : this.company,
+    memo: memo.present ? memo.value : this.memo,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DbNoteMaterial copyWithCompanion(DbNoteMaterialsCompanion data) {
+    return DbNoteMaterial(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      name: data.name.present ? data.name.value : this.name,
+      catalogNumber: data.catalogNumber.present
+          ? data.catalogNumber.value
+          : this.catalogNumber,
+      lotNumber: data.lotNumber.present ? data.lotNumber.value : this.lotNumber,
+      company: data.company.present ? data.company.value : this.company,
+      memo: data.memo.present ? data.memo.value : this.memo,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteMaterial(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('name: $name, ')
+          ..write('catalogNumber: $catalogNumber, ')
+          ..write('lotNumber: $lotNumber, ')
+          ..write('company: $company, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    noteId,
+    name,
+    catalogNumber,
+    lotNumber,
+    company,
+    memo,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbNoteMaterial &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.name == this.name &&
+          other.catalogNumber == this.catalogNumber &&
+          other.lotNumber == this.lotNumber &&
+          other.company == this.company &&
+          other.memo == this.memo &&
+          other.createdAt == this.createdAt);
+}
+
+class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
+  final Value<String> id;
+  final Value<String> noteId;
+  final Value<String> name;
+  final Value<String?> catalogNumber;
+  final Value<String?> lotNumber;
+  final Value<String?> company;
+  final Value<String?> memo;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const DbNoteMaterialsCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.catalogNumber = const Value.absent(),
+    this.lotNumber = const Value.absent(),
+    this.company = const Value.absent(),
+    this.memo = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DbNoteMaterialsCompanion.insert({
+    required String id,
+    required String noteId,
+    required String name,
+    this.catalogNumber = const Value.absent(),
+    this.lotNumber = const Value.absent(),
+    this.company = const Value.absent(),
+    this.memo = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       noteId = Value(noteId),
+       name = Value(name),
+       createdAt = Value(createdAt);
+  static Insertable<DbNoteMaterial> custom({
+    Expression<String>? id,
+    Expression<String>? noteId,
+    Expression<String>? name,
+    Expression<String>? catalogNumber,
+    Expression<String>? lotNumber,
+    Expression<String>? company,
+    Expression<String>? memo,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (name != null) 'name': name,
+      if (catalogNumber != null) 'catalog_number': catalogNumber,
+      if (lotNumber != null) 'lot_number': lotNumber,
+      if (company != null) 'company': company,
+      if (memo != null) 'memo': memo,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DbNoteMaterialsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? noteId,
+    Value<String>? name,
+    Value<String?>? catalogNumber,
+    Value<String?>? lotNumber,
+    Value<String?>? company,
+    Value<String?>? memo,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return DbNoteMaterialsCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      name: name ?? this.name,
+      catalogNumber: catalogNumber ?? this.catalogNumber,
+      lotNumber: lotNumber ?? this.lotNumber,
+      company: company ?? this.company,
+      memo: memo ?? this.memo,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<String>(noteId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (catalogNumber.present) {
+      map['catalog_number'] = Variable<String>(catalogNumber.value);
+    }
+    if (lotNumber.present) {
+      map['lot_number'] = Variable<String>(lotNumber.value);
+    }
+    if (company.present) {
+      map['company'] = Variable<String>(company.value);
+    }
+    if (memo.present) {
+      map['memo'] = Variable<String>(memo.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteMaterialsCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('name: $name, ')
+          ..write('catalogNumber: $catalogNumber, ')
+          ..write('lotNumber: $lotNumber, ')
+          ..write('company: $company, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DbNoteReferencesTable extends DbNoteReferences
+    with TableInfo<$DbNoteReferencesTable, DbNoteReference> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DbNoteReferencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _doiMeta = const VerificationMeta('doi');
+  @override
+  late final GeneratedColumn<String> doi = GeneratedColumn<String>(
+    'doi',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memoMeta = const VerificationMeta('memo');
+  @override
+  late final GeneratedColumn<String> memo = GeneratedColumn<String>(
+    'memo',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, noteId, doi, memo, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'db_note_references';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbNoteReference> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('doi')) {
+      context.handle(
+        _doiMeta,
+        doi.isAcceptableOrUnknown(data['doi']!, _doiMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_doiMeta);
+    }
+    if (data.containsKey('memo')) {
+      context.handle(
+        _memoMeta,
+        memo.isAcceptableOrUnknown(data['memo']!, _memoMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbNoteReference map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbNoteReference(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note_id'],
+      )!,
+      doi: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}doi'],
+      )!,
+      memo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memo'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DbNoteReferencesTable createAlias(String alias) {
+    return $DbNoteReferencesTable(attachedDatabase, alias);
+  }
+}
+
+class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
+  final String id;
+  final String noteId;
+  final String doi;
+  final String? memo;
+  final DateTime createdAt;
+  const DbNoteReference({
+    required this.id,
+    required this.noteId,
+    required this.doi,
+    this.memo,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['note_id'] = Variable<String>(noteId);
+    map['doi'] = Variable<String>(doi);
+    if (!nullToAbsent || memo != null) {
+      map['memo'] = Variable<String>(memo);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DbNoteReferencesCompanion toCompanion(bool nullToAbsent) {
+    return DbNoteReferencesCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      doi: Value(doi),
+      memo: memo == null && nullToAbsent ? const Value.absent() : Value(memo),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DbNoteReference.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbNoteReference(
+      id: serializer.fromJson<String>(json['id']),
+      noteId: serializer.fromJson<String>(json['noteId']),
+      doi: serializer.fromJson<String>(json['doi']),
+      memo: serializer.fromJson<String?>(json['memo']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'noteId': serializer.toJson<String>(noteId),
+      'doi': serializer.toJson<String>(doi),
+      'memo': serializer.toJson<String?>(memo),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DbNoteReference copyWith({
+    String? id,
+    String? noteId,
+    String? doi,
+    Value<String?> memo = const Value.absent(),
+    DateTime? createdAt,
+  }) => DbNoteReference(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    doi: doi ?? this.doi,
+    memo: memo.present ? memo.value : this.memo,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DbNoteReference copyWithCompanion(DbNoteReferencesCompanion data) {
+    return DbNoteReference(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      doi: data.doi.present ? data.doi.value : this.doi,
+      memo: data.memo.present ? data.memo.value : this.memo,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteReference(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('doi: $doi, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, noteId, doi, memo, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbNoteReference &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.doi == this.doi &&
+          other.memo == this.memo &&
+          other.createdAt == this.createdAt);
+}
+
+class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
+  final Value<String> id;
+  final Value<String> noteId;
+  final Value<String> doi;
+  final Value<String?> memo;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const DbNoteReferencesCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.doi = const Value.absent(),
+    this.memo = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DbNoteReferencesCompanion.insert({
+    required String id,
+    required String noteId,
+    required String doi,
+    this.memo = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       noteId = Value(noteId),
+       doi = Value(doi),
+       createdAt = Value(createdAt);
+  static Insertable<DbNoteReference> custom({
+    Expression<String>? id,
+    Expression<String>? noteId,
+    Expression<String>? doi,
+    Expression<String>? memo,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (doi != null) 'doi': doi,
+      if (memo != null) 'memo': memo,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DbNoteReferencesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? noteId,
+    Value<String>? doi,
+    Value<String?>? memo,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return DbNoteReferencesCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      doi: doi ?? this.doi,
+      memo: memo ?? this.memo,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<String>(noteId.value);
+    }
+    if (doi.present) {
+      map['doi'] = Variable<String>(doi.value);
+    }
+    if (memo.present) {
+      map['memo'] = Variable<String>(memo.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbNoteReferencesCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('doi: $doi, ')
+          ..write('memo: $memo, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $DbNotesTable dbNotes = $DbNotesTable(this);
+  late final $DbNoteReagentsTable dbNoteReagents = $DbNoteReagentsTable(this);
+  late final $DbNoteMaterialsTable dbNoteMaterials = $DbNoteMaterialsTable(
+    this,
+  );
+  late final $DbNoteReferencesTable dbNoteReferences = $DbNoteReferencesTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [dbNotes];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    dbNotes,
+    dbNoteReagents,
+    dbNoteMaterials,
+    dbNoteReferences,
+  ];
 }
 
 typedef $$DbNotesTableCreateCompanionBuilder =
     DbNotesCompanion Function({
       required String id,
+      Value<DateTime?> noteDate,
       Value<String> title,
       Value<String> body,
       required DateTime createdAt,
@@ -585,6 +2026,7 @@ typedef $$DbNotesTableCreateCompanionBuilder =
 typedef $$DbNotesTableUpdateCompanionBuilder =
     DbNotesCompanion Function({
       Value<String> id,
+      Value<DateTime?> noteDate,
       Value<String> title,
       Value<String> body,
       Value<DateTime> createdAt,
@@ -607,6 +2049,11 @@ class $$DbNotesTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get noteDate => $composableBuilder(
+    column: $table.noteDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -665,6 +2112,11 @@ class $$DbNotesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get noteDate => $composableBuilder(
+    column: $table.noteDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get title => $composableBuilder(
     column: $table.title,
     builder: (column) => ColumnOrderings(column),
@@ -717,6 +2169,9 @@ class $$DbNotesTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get noteDate =>
+      $composableBuilder(column: $table.noteDate, builder: (column) => column);
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
@@ -772,6 +2227,7 @@ class $$DbNotesTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
+                Value<DateTime?> noteDate = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> body = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -783,6 +2239,7 @@ class $$DbNotesTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => DbNotesCompanion(
                 id: id,
+                noteDate: noteDate,
                 title: title,
                 body: body,
                 createdAt: createdAt,
@@ -796,6 +2253,7 @@ class $$DbNotesTableTableManager
           createCompanionCallback:
               ({
                 required String id,
+                Value<DateTime?> noteDate = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> body = const Value.absent(),
                 required DateTime createdAt,
@@ -807,6 +2265,7 @@ class $$DbNotesTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => DbNotesCompanion.insert(
                 id: id,
+                noteDate: noteDate,
                 title: title,
                 body: body,
                 createdAt: createdAt,
@@ -839,10 +2298,748 @@ typedef $$DbNotesTableProcessedTableManager =
       DbNote,
       PrefetchHooks Function()
     >;
+typedef $$DbNoteReagentsTableCreateCompanionBuilder =
+    DbNoteReagentsCompanion Function({
+      required String id,
+      required String noteId,
+      required String name,
+      Value<String?> catalogNumber,
+      Value<String?> lotNumber,
+      Value<String?> company,
+      Value<String?> memo,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$DbNoteReagentsTableUpdateCompanionBuilder =
+    DbNoteReagentsCompanion Function({
+      Value<String> id,
+      Value<String> noteId,
+      Value<String> name,
+      Value<String?> catalogNumber,
+      Value<String?> lotNumber,
+      Value<String?> company,
+      Value<String?> memo,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$DbNoteReagentsTableFilterComposer
+    extends Composer<_$AppDatabase, $DbNoteReagentsTable> {
+  $$DbNoteReagentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lotNumber => $composableBuilder(
+    column: $table.lotNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get company => $composableBuilder(
+    column: $table.company,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DbNoteReagentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DbNoteReagentsTable> {
+  $$DbNoteReagentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lotNumber => $composableBuilder(
+    column: $table.lotNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get company => $composableBuilder(
+    column: $table.company,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DbNoteReagentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DbNoteReagentsTable> {
+  $$DbNoteReagentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lotNumber =>
+      $composableBuilder(column: $table.lotNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get company =>
+      $composableBuilder(column: $table.company, builder: (column) => column);
+
+  GeneratedColumn<String> get memo =>
+      $composableBuilder(column: $table.memo, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DbNoteReagentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DbNoteReagentsTable,
+          DbNoteReagent,
+          $$DbNoteReagentsTableFilterComposer,
+          $$DbNoteReagentsTableOrderingComposer,
+          $$DbNoteReagentsTableAnnotationComposer,
+          $$DbNoteReagentsTableCreateCompanionBuilder,
+          $$DbNoteReagentsTableUpdateCompanionBuilder,
+          (
+            DbNoteReagent,
+            BaseReferences<_$AppDatabase, $DbNoteReagentsTable, DbNoteReagent>,
+          ),
+          DbNoteReagent,
+          PrefetchHooks Function()
+        > {
+  $$DbNoteReagentsTableTableManager(
+    _$AppDatabase db,
+    $DbNoteReagentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DbNoteReagentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DbNoteReagentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DbNoteReagentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> noteId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> catalogNumber = const Value.absent(),
+                Value<String?> lotNumber = const Value.absent(),
+                Value<String?> company = const Value.absent(),
+                Value<String?> memo = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteReagentsCompanion(
+                id: id,
+                noteId: noteId,
+                name: name,
+                catalogNumber: catalogNumber,
+                lotNumber: lotNumber,
+                company: company,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String noteId,
+                required String name,
+                Value<String?> catalogNumber = const Value.absent(),
+                Value<String?> lotNumber = const Value.absent(),
+                Value<String?> company = const Value.absent(),
+                Value<String?> memo = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteReagentsCompanion.insert(
+                id: id,
+                noteId: noteId,
+                name: name,
+                catalogNumber: catalogNumber,
+                lotNumber: lotNumber,
+                company: company,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DbNoteReagentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DbNoteReagentsTable,
+      DbNoteReagent,
+      $$DbNoteReagentsTableFilterComposer,
+      $$DbNoteReagentsTableOrderingComposer,
+      $$DbNoteReagentsTableAnnotationComposer,
+      $$DbNoteReagentsTableCreateCompanionBuilder,
+      $$DbNoteReagentsTableUpdateCompanionBuilder,
+      (
+        DbNoteReagent,
+        BaseReferences<_$AppDatabase, $DbNoteReagentsTable, DbNoteReagent>,
+      ),
+      DbNoteReagent,
+      PrefetchHooks Function()
+    >;
+typedef $$DbNoteMaterialsTableCreateCompanionBuilder =
+    DbNoteMaterialsCompanion Function({
+      required String id,
+      required String noteId,
+      required String name,
+      Value<String?> catalogNumber,
+      Value<String?> lotNumber,
+      Value<String?> company,
+      Value<String?> memo,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$DbNoteMaterialsTableUpdateCompanionBuilder =
+    DbNoteMaterialsCompanion Function({
+      Value<String> id,
+      Value<String> noteId,
+      Value<String> name,
+      Value<String?> catalogNumber,
+      Value<String?> lotNumber,
+      Value<String?> company,
+      Value<String?> memo,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$DbNoteMaterialsTableFilterComposer
+    extends Composer<_$AppDatabase, $DbNoteMaterialsTable> {
+  $$DbNoteMaterialsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lotNumber => $composableBuilder(
+    column: $table.lotNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get company => $composableBuilder(
+    column: $table.company,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DbNoteMaterialsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DbNoteMaterialsTable> {
+  $$DbNoteMaterialsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lotNumber => $composableBuilder(
+    column: $table.lotNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get company => $composableBuilder(
+    column: $table.company,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DbNoteMaterialsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DbNoteMaterialsTable> {
+  $$DbNoteMaterialsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get catalogNumber => $composableBuilder(
+    column: $table.catalogNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lotNumber =>
+      $composableBuilder(column: $table.lotNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get company =>
+      $composableBuilder(column: $table.company, builder: (column) => column);
+
+  GeneratedColumn<String> get memo =>
+      $composableBuilder(column: $table.memo, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DbNoteMaterialsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DbNoteMaterialsTable,
+          DbNoteMaterial,
+          $$DbNoteMaterialsTableFilterComposer,
+          $$DbNoteMaterialsTableOrderingComposer,
+          $$DbNoteMaterialsTableAnnotationComposer,
+          $$DbNoteMaterialsTableCreateCompanionBuilder,
+          $$DbNoteMaterialsTableUpdateCompanionBuilder,
+          (
+            DbNoteMaterial,
+            BaseReferences<
+              _$AppDatabase,
+              $DbNoteMaterialsTable,
+              DbNoteMaterial
+            >,
+          ),
+          DbNoteMaterial,
+          PrefetchHooks Function()
+        > {
+  $$DbNoteMaterialsTableTableManager(
+    _$AppDatabase db,
+    $DbNoteMaterialsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DbNoteMaterialsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DbNoteMaterialsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DbNoteMaterialsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> noteId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> catalogNumber = const Value.absent(),
+                Value<String?> lotNumber = const Value.absent(),
+                Value<String?> company = const Value.absent(),
+                Value<String?> memo = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteMaterialsCompanion(
+                id: id,
+                noteId: noteId,
+                name: name,
+                catalogNumber: catalogNumber,
+                lotNumber: lotNumber,
+                company: company,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String noteId,
+                required String name,
+                Value<String?> catalogNumber = const Value.absent(),
+                Value<String?> lotNumber = const Value.absent(),
+                Value<String?> company = const Value.absent(),
+                Value<String?> memo = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteMaterialsCompanion.insert(
+                id: id,
+                noteId: noteId,
+                name: name,
+                catalogNumber: catalogNumber,
+                lotNumber: lotNumber,
+                company: company,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DbNoteMaterialsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DbNoteMaterialsTable,
+      DbNoteMaterial,
+      $$DbNoteMaterialsTableFilterComposer,
+      $$DbNoteMaterialsTableOrderingComposer,
+      $$DbNoteMaterialsTableAnnotationComposer,
+      $$DbNoteMaterialsTableCreateCompanionBuilder,
+      $$DbNoteMaterialsTableUpdateCompanionBuilder,
+      (
+        DbNoteMaterial,
+        BaseReferences<_$AppDatabase, $DbNoteMaterialsTable, DbNoteMaterial>,
+      ),
+      DbNoteMaterial,
+      PrefetchHooks Function()
+    >;
+typedef $$DbNoteReferencesTableCreateCompanionBuilder =
+    DbNoteReferencesCompanion Function({
+      required String id,
+      required String noteId,
+      required String doi,
+      Value<String?> memo,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$DbNoteReferencesTableUpdateCompanionBuilder =
+    DbNoteReferencesCompanion Function({
+      Value<String> id,
+      Value<String> noteId,
+      Value<String> doi,
+      Value<String?> memo,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$DbNoteReferencesTableFilterComposer
+    extends Composer<_$AppDatabase, $DbNoteReferencesTable> {
+  $$DbNoteReferencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get doi => $composableBuilder(
+    column: $table.doi,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DbNoteReferencesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DbNoteReferencesTable> {
+  $$DbNoteReferencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get doi => $composableBuilder(
+    column: $table.doi,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DbNoteReferencesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DbNoteReferencesTable> {
+  $$DbNoteReferencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<String> get doi =>
+      $composableBuilder(column: $table.doi, builder: (column) => column);
+
+  GeneratedColumn<String> get memo =>
+      $composableBuilder(column: $table.memo, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DbNoteReferencesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DbNoteReferencesTable,
+          DbNoteReference,
+          $$DbNoteReferencesTableFilterComposer,
+          $$DbNoteReferencesTableOrderingComposer,
+          $$DbNoteReferencesTableAnnotationComposer,
+          $$DbNoteReferencesTableCreateCompanionBuilder,
+          $$DbNoteReferencesTableUpdateCompanionBuilder,
+          (
+            DbNoteReference,
+            BaseReferences<
+              _$AppDatabase,
+              $DbNoteReferencesTable,
+              DbNoteReference
+            >,
+          ),
+          DbNoteReference,
+          PrefetchHooks Function()
+        > {
+  $$DbNoteReferencesTableTableManager(
+    _$AppDatabase db,
+    $DbNoteReferencesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DbNoteReferencesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DbNoteReferencesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DbNoteReferencesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> noteId = const Value.absent(),
+                Value<String> doi = const Value.absent(),
+                Value<String?> memo = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteReferencesCompanion(
+                id: id,
+                noteId: noteId,
+                doi: doi,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String noteId,
+                required String doi,
+                Value<String?> memo = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DbNoteReferencesCompanion.insert(
+                id: id,
+                noteId: noteId,
+                doi: doi,
+                memo: memo,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DbNoteReferencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DbNoteReferencesTable,
+      DbNoteReference,
+      $$DbNoteReferencesTableFilterComposer,
+      $$DbNoteReferencesTableOrderingComposer,
+      $$DbNoteReferencesTableAnnotationComposer,
+      $$DbNoteReferencesTableCreateCompanionBuilder,
+      $$DbNoteReferencesTableUpdateCompanionBuilder,
+      (
+        DbNoteReference,
+        BaseReferences<_$AppDatabase, $DbNoteReferencesTable, DbNoteReference>,
+      ),
+      DbNoteReference,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
   $$DbNotesTableTableManager get dbNotes =>
       $$DbNotesTableTableManager(_db, _db.dbNotes);
+  $$DbNoteReagentsTableTableManager get dbNoteReagents =>
+      $$DbNoteReagentsTableTableManager(_db, _db.dbNoteReagents);
+  $$DbNoteMaterialsTableTableManager get dbNoteMaterials =>
+      $$DbNoteMaterialsTableTableManager(_db, _db.dbNoteMaterials);
+  $$DbNoteReferencesTableTableManager get dbNoteReferences =>
+      $$DbNoteReferencesTableTableManager(_db, _db.dbNoteReferences);
 }

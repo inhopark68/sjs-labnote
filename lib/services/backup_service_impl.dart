@@ -4,199 +4,323 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:labnote/data/app_database.dart';
 
-import '../data/app_database.dart';
-import 'backup_platform/backup_platform.dart';
+import 'backup_platform/download_file.dart' as dl;
 import 'backup_service.dart';
 
 class BackupServiceImpl implements BackupService {
-  final NotesRepository db;
-
+  final AppDatabase db;
   BackupServiceImpl(this.db);
 
-  // -------------------------
-  // DB <-> JSON (plain)
-  // -------------------------
+  static const int _kPbkdf2Iter = 100000;
+  static const int _kSaltLen = 16;
+  static const int _kNonceLen = 12; // GCM 권장 12 bytes
 
+  // -----------------------
+  // EXPORT
+  // -----------------------
   @override
-  Future<String> exportToJson() async {
-    final notes = await db.listNotes(query: '');
+  Future<Uint8List> exportBackup({String? password}) async {
+    final rows = await db.allNoteRowsIncludingDeleted();
 
-    final data = notes
-        .map(
-          (n) => {
-            'id': n.id,
-            'title': n.title,
-            'body': n.body,
-            'createdAt': n.createdAt.toIso8601String(),
-            'updatedAt': n.updatedAt.toIso8601String(),
-            'isPinned': n.isPinned,
-            'isLocked': n.isLocked,
-            'isDeleted': n.isDeleted,
-            'project': n.project,
-          },
-        )
-        .toList(growable: false);
-
-    return jsonEncode(data);
-  }
-
-  @override
-  Future<void> importFromJson(String json) async {
-    final decoded = jsonDecode(json) as List<dynamic>;
-
-    final notes = decoded
-        .map((e) {
-          final m = e as Map<String, dynamic>;
-          return Note(
-            id: m['id'] as String,
-            title: (m['title'] ?? '') as String,
-            body: (m['body'] ?? '') as String,
-            createdAt: DateTime.parse(m['createdAt'] as String),
-            updatedAt: DateTime.parse(m['updatedAt'] as String),
-            isPinned: (m['isPinned'] ?? false) as bool,
-            isLocked: (m['isLocked'] ?? false) as bool,
-            isDeleted: (m['isDeleted'] ?? false) as bool,
-            project: m['project'] as String?,
-          );
-        })
-        .toList(growable: false);
-
-    await db.replaceAllNotesFromBackup(notes);
-  }
-
-  // -------------------------
-  // Encryption helpers (AES-256-CBC)
-  // -------------------------
-
-  Uint8List _randomBytes(int len) {
-    final r = Random.secure();
-    return Uint8List.fromList(List<int>.generate(len, (_) => r.nextInt(256)));
-  }
-
-  Uint8List _deriveKey32(String password, Uint8List salt16) {
-    // 간단 버전: key = SHA256(utf8(password) + salt)
-    final pw = utf8.encode(password);
-    final bytes = <int>[...pw, ...salt16];
-    final digest = crypto.sha256.convert(bytes);
-    return Uint8List.fromList(digest.bytes); // 32 bytes
-  }
-
-  String _encryptJson(String plainJson, String password) {
-    final salt = _randomBytes(16);
-    final iv = _randomBytes(16);
-    final key = _deriveKey32(password, salt);
-
-    final aes = encrypt.AES(
-      encrypt.Key(key),
-      mode: encrypt.AESMode.cbc,
-      padding: 'PKCS7',
-    );
-
-    final encrypter = encrypt.Encrypter(aes);
-    final encrypted = encrypter.encrypt(plainJson, iv: encrypt.IV(iv));
-
-    final wrapper = <String, dynamic>{
+    // 1) "평문 백업 payload"
+    final plainPayload = <String, dynamic>{
       'version': 2,
-      'encrypted': true,
-      'cipher': 'AES-256-CBC',
-      'salt': base64Encode(salt),
-      'iv': base64Encode(iv),
-      'data': encrypted.base64,
+      'ts': DateTime.now().toIso8601String(),
+      'encrypted': false,
+      'notes': rows.map(_dbRowToJson).toList(growable: false),
     };
 
-    return jsonEncode(wrapper);
-  }
+    final isEncrypted = password != null && password.isNotEmpty;
 
-  String _decryptJson(String wrappedJson, String password) {
-    final obj = jsonDecode(wrappedJson);
+    String outJson;
+    String filename;
 
-    if (obj is! Map<String, dynamic> || obj['encrypted'] != true) {
-      return wrappedJson; // 평문 백업
+    if (!isEncrypted) {
+      outJson = jsonEncode(plainPayload);
+      filename = _makeFilename(encrypted: false);
+    } else {
+      // 2) 평문 payload JSON을 암호화해 "컨테이너 JSON" 생성
+      final plainJson = jsonEncode(plainPayload);
+      final container = _encryptToContainerJson(plainJson, password!);
+      outJson = jsonEncode(container);
+      filename = _makeFilename(encrypted: true);
     }
 
-    final salt = base64Decode(obj['salt'] as String);
-    final iv = base64Decode(obj['iv'] as String);
-    final dataB64 = obj['data'] as String;
+    final bytes = Uint8List.fromList(utf8.encode(outJson));
 
-    final key = _deriveKey32(password, Uint8List.fromList(salt));
-
-    final aes = encrypt.AES(
-      encrypt.Key(key),
-      mode: encrypt.AESMode.cbc,
-      padding: 'PKCS7',
-    );
-
-    final encrypter = encrypt.Encrypter(aes);
-
-    try {
-      return encrypter.decrypt64(
-        dataB64,
-        iv: encrypt.IV(Uint8List.fromList(iv)),
+    if (kIsWeb) {
+      await dl.downloadBytes(
+        bytes: bytes,
+        filename: filename,
+        mime: 'application/json',
       );
-    } catch (_) {
-      throw StateError('비밀번호가 올바르지 않거나 백업 파일이 손상되었습니다.');
     }
+
+    return bytes;
   }
 
-  // -------------------------
-  // Platform I/O
-  // -------------------------
+  Map<String, dynamic> _dbRowToJson(DbNote r) => <String, dynamic>{
+        'id': r.id,
+        'title': r.title,
+        'body': r.body,
+        'createdAt': r.createdAt.toIso8601String(),
+        'updatedAt': r.updatedAt.toIso8601String(),
+        'isPinned': r.isPinned,
+        'isLocked': r.isLocked,
+        'isDeleted': r.isDeleted,
+        'project': r.project,
+      };
 
-  @override
-  Future<void> exportBackup({String? password}) async {
-    final plain = await exportToJson();
-    final payload = (password != null && password.isNotEmpty)
-        ? _encryptJson(plain, password)
-        : plain;
-
-    await BackupPlatform.exportJson(payload);
+  String _makeFilename({required bool encrypted}) {
+    final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+    return encrypted ? 'labnote-backup-$ts.enc.json' : 'labnote-backup-$ts.json';
   }
 
+  // -----------------------
+  // PICK (IMPORT SOURCE)
+  // -----------------------
   @override
   Future<String?> pickRawBackupText() async {
-    return BackupPlatform.pickJsonText();
-  }
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+      type: FileType.any,
+    );
 
-  @override
-  Future<void> importRawBackupText(String raw, {String? password}) async {
-    final decoded = jsonDecode(raw);
-    final isEncrypted =
-        decoded is Map<String, dynamic> && decoded['encrypted'] == true;
+    if (result == null || result.files.isEmpty) return null;
 
-    if (isEncrypted) {
-      if (password == null || password.isEmpty) {
-        throw StateError('암호화된 백업입니다. 비밀번호가 필요합니다.');
-      }
-      final plain = _decryptJson(raw, password);
-      await importFromJson(plain);
-      return;
+    final f = result.files.single;
+
+    // 웹/모바일 공통: bytes가 있으면 바로 사용
+    if (f.bytes != null) {
+      return utf8.decode(f.bytes!, allowMalformed: true);
     }
 
-    await importFromJson(raw);
+    // ✅ 웹에서는 path 읽기 불가 → 예외 대신 null 처리
+    if (kIsWeb) return null;
+
+    // 모바일/데스크탑인데 path가 없으면 실패
+    if (f.path == null) return null;
+
+    throw Exception('이 환경에서는 path 기반 파일 읽기가 지원되지 않습니다.');
   }
 
-  // -------------------------
-  // Product-grade: PRE-RESTORE + always encrypted
-  // -------------------------
-
+  // -----------------------
+  // SAFE IMPORT (PRE-RESTORE + IMPORT)
+  // -----------------------
+  
   @override
   Future<void> safeImportWithPreBackup({
     required String rawBackupText,
     required String preBackupPassword,
     String? importPassword,
   }) async {
-    // 1) 현재 데이터 자동 백업 (항상 암호화)
-    final plain = await exportToJson();
-    final encryptedPre = _encryptJson(plain, preBackupPassword);
+    // PRE-RESTORE 백업을 먼저 생성 (웹이면 다운로드됨)
+    await exportBackup(password: preBackupPassword);
 
-    // 2) 파일명 PRE-RESTORE 접두어
-    final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final fileName = 'PRE-RESTORE_labnote-backup-$ts.json';
-
-    await BackupPlatform.exportJson(encryptedPre, fileNameOverride: fileName);
-
-    // 3) 선택한 백업 복원
-    await importRawBackupText(rawBackupText, password: importPassword);
+    // 실제 import
+    await _import(rawBackupText: rawBackupText, importPassword: importPassword);
   }
+
+  Future<void> _import({
+    required String rawBackupText,
+    required String? importPassword,
+  }) async {
+    // 1) 먼저 "바깥 JSON" 파싱
+    Map<String, dynamic> root;
+    try {
+      final obj = jsonDecode(rawBackupText);
+      if (obj is! Map<String, dynamic>) throw Exception('백업 루트가 Map이 아닙니다.');
+      root = obj;
+    } catch (e) {
+      throw Exception('백업 파일 형식이 올바르지 않습니다: $e');
+    }
+
+    final version = root['version'];
+    if (version != 2) throw Exception('지원하지 않는 백업 버전입니다: $version');
+
+    final encryptedFlag = root['encrypted'] == true;
+
+    // 2) encrypted면 복호화해서 "평문 payload" 획득
+    Map<String, dynamic> plainPayload;
+    if (!encryptedFlag) {
+      plainPayload = root; // 이미 평문 payload
+    } else {
+      if (importPassword == null || importPassword.isEmpty) {
+        throw Exception('암호화된 백업은 비밀번호가 필요합니다.');
+      }
+      final plainJson = _decryptContainerToPlainJson(root, importPassword);
+      final obj = jsonDecode(plainJson);
+      if (obj is! Map<String, dynamic>) throw Exception('복호화 결과가 올바르지 않습니다.');
+      plainPayload = obj;
+    }
+
+    // 3) notes -> List<Note> 변환
+    final notesAny = plainPayload['notes'];
+    if (notesAny is! List) throw Exception('notes가 List가 아닙니다.');
+
+    final notes = <Note>[];
+    for (final e in notesAny) {
+      if (e is! Map) continue;
+      final m = e.cast<String, dynamic>();
+
+      final id = (m['id'] as String?)?.trim();
+      if (id == null || id.isEmpty) continue;
+
+      notes.add(
+        Note(
+          id: id,
+          title: (m['title'] as String?) ?? '',
+          body: (m['body'] as String?) ?? '',
+          createdAt:
+              DateTime.tryParse((m['createdAt'] as String?) ?? '') ?? DateTime.now(),
+          updatedAt:
+              DateTime.tryParse((m['updatedAt'] as String?) ?? '') ?? DateTime.now(),
+          isPinned: (m['isPinned'] as bool?) ?? false,
+          isLocked: (m['isLocked'] as bool?) ?? false,
+          isDeleted: (m['isDeleted'] as bool?) ?? false,
+          project: m['project'] as String?,
+        ),
+      );
+    }
+
+    // 4) 전체 교체 복원 (당신 DB가 이미 제공!)
+    await db.replaceAllNotesFromBackup(notes);
+
+    if (kDebugMode) {
+      debugPrint('Import complete: notes=${notes.length}, encrypted=$encryptedFlag');
+    }
+  }
+
+  // =========================================================
+  // Encryption helpers: AES-256-GCM + PBKDF2(HMAC-SHA256)
+  // =========================================================
+
+  Map<String, dynamic> _encryptToContainerJson(String plainJson, String password) {
+    final salt = _randomBytes(_kSaltLen);
+    final nonce = _randomBytes(_kNonceLen);
+
+    final keyBytes = _pbkdf2HmacSha256(
+      password: password,
+      salt: salt,
+      iterations: _kPbkdf2Iter,
+      dkLen: 32, // AES-256
+    );
+
+    final key = encrypt.Key(Uint8List.fromList(keyBytes));
+    final iv = encrypt.IV(Uint8List.fromList(nonce));
+
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(key, mode: encrypt.AESMode.gcm),
+    );
+
+    final encrypted = encrypter.encrypt(plainJson, iv: iv);
+
+    return <String, dynamic>{
+      'version': 2,
+      'ts': DateTime.now().toIso8601String(),
+      'encrypted': true,
+      'alg': 'AES-256-GCM',
+      'kdf': 'PBKDF2-HMAC-SHA256',
+      'iter': _kPbkdf2Iter,
+      'salt': base64Encode(salt),
+      'nonce': base64Encode(nonce),
+      'ciphertext': encrypted.base64,
+    };
+  }
+
+  String _decryptContainerToPlainJson(Map<String, dynamic> container, String password) {
+    final iter = (container['iter'] as num?)?.toInt() ?? _kPbkdf2Iter;
+
+    final saltB64 = container['salt'] as String?;
+    final nonceB64 = container['nonce'] as String?;
+    final cipherB64 = container['ciphertext'] as String?;
+
+    if (saltB64 == null || nonceB64 == null || cipherB64 == null) {
+      throw Exception('암호화 백업 필수 필드(salt/nonce/ciphertext)가 없습니다.');
+    }
+
+    final salt = base64Decode(saltB64);
+    final nonce = base64Decode(nonceB64);
+
+    final keyBytes = _pbkdf2HmacSha256(
+      password: password,
+      salt: salt,
+      iterations: iter,
+      dkLen: 32,
+    );
+
+    final key = encrypt.Key(Uint8List.fromList(keyBytes));
+    final iv = encrypt.IV(Uint8List.fromList(nonce));
+
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(key, mode: encrypt.AESMode.gcm),
+    );
+
+    try {
+      return encrypter.decrypt64(cipherB64, iv: iv);
+    } catch (_) {
+      throw Exception('비밀번호가 올바르지 않거나 백업이 손상되었습니다.');
+    }
+  }
+
+  List<int> _randomBytes(int len) {
+    final r = Random.secure();
+    return List<int>.generate(len, (_) => r.nextInt(256), growable: false);
+  }
+
+  /// PBKDF2-HMAC-SHA256 (간단 구현)
+  List<int> _pbkdf2HmacSha256({
+    required String password,
+    required List<int> salt,
+    required int iterations,
+    required int dkLen,
+  }) {
+    final pwBytes = utf8.encode(password);
+    final hLen = 32; // sha256 output
+    final l = (dkLen / hLen).ceil();
+
+    final out = BytesBuilder(copy: false);
+
+    for (var i = 1; i <= l; i++) {
+      final block = _pbkdf2Block(pwBytes, salt, iterations, i);
+      out.add(block);
+    }
+
+    final dk = out.toBytes();
+    return dk.sublist(0, dkLen);
+  }
+
+  List<int> _pbkdf2Block(List<int> pw, List<int> salt, int iter, int blockIndex) {
+    // U1 = PRF(P, S || INT_32_BE(i))
+    final si = BytesBuilder(copy: false)
+      ..add(salt)
+      ..add(_int32be(blockIndex));
+    var u = _hmacSha256(pw, si.toBytes());
+    final t = List<int>.from(u);
+
+    for (var j = 2; j <= iter; j++) {
+      u = _hmacSha256(pw, u);
+      for (var k = 0; k < t.length; k++) {
+        t[k] ^= u[k];
+      }
+    }
+    return t;
+  }
+
+  List<int> _hmacSha256(List<int> key, List<int> msg) {
+    final h = crypto.Hmac(crypto.sha256, key);
+    return h.convert(msg).bytes;
+  }
+
+  List<int> _int32be(int i) => <int>[
+        (i >> 24) & 0xff,
+        (i >> 16) & 0xff,
+        (i >> 8) & 0xff,
+        i & 0xff,
+      ];
 }
