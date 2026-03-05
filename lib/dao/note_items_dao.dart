@@ -12,7 +12,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // Reagents
   // =========================================================
 
-  Future<List<DbNoteReagent>> listReagents(String noteId) {
+  Future<List<DbNoteReagent>> listReagents(int noteId) {
     return (select(dbNoteReagents)
           ..where((t) => t.noteId.equals(noteId))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
@@ -25,7 +25,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
   Future<void> insertReagentRaw({
     required String id,
-    required String noteId,
+    required int noteId, // ✅ String -> int
     required String name,
     String? catalogNumber,
     String? lotNumber,
@@ -36,7 +36,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteReagents).insert(
       DbNoteReagentsCompanion.insert(
         id: id,
-        noteId: noteId,
+        noteId: noteId, // ✅ int
         name: name,
         createdAt: createdAt,
         catalogNumber: Value(_clean(catalogNumber)),
@@ -51,7 +51,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // Materials
   // =========================================================
 
-  Future<List<DbNoteMaterial>> listMaterials(String noteId) {
+  Future<List<DbNoteMaterial>> listMaterials(int noteId) {
     return (select(dbNoteMaterials)
           ..where((t) => t.noteId.equals(noteId))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
@@ -64,7 +64,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
   Future<void> insertMaterialRaw({
     required String id,
-    required String noteId,
+    required int noteId, // ✅ String -> int
     required String name,
     String? catalogNumber,
     String? lotNumber,
@@ -75,7 +75,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteMaterials).insert(
       DbNoteMaterialsCompanion.insert(
         id: id,
-        noteId: noteId,
+        noteId: noteId, // ✅ int
         name: name,
         createdAt: createdAt,
         catalogNumber: Value(_clean(catalogNumber)),
@@ -90,7 +90,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // References (DOI)
   // =========================================================
 
-  Future<List<DbNoteReference>> listReferences(String noteId) {
+  Future<List<DbNoteReference>> listReferences(int noteId) {
     return (select(dbNoteReferences)
           ..where((t) => t.noteId.equals(noteId))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
@@ -103,7 +103,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
   Future<void> insertReferenceRaw({
     required String id,
-    required String noteId,
+    required int noteId, // ✅ String -> int
     required String doi,
     String? memo,
     required DateTime createdAt,
@@ -111,7 +111,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteReferences).insert(
       DbNoteReferencesCompanion.insert(
         id: id,
-        noteId: noteId,
+        noteId: noteId, // ✅ int
         doi: doi,
         createdAt: createdAt,
         memo: Value(_clean(memo)),
@@ -124,7 +124,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // =========================================================
 
   /// ✅ 노트 완전삭제(hard delete) 시: 관련 시약/재료/DOI 모두 삭제
-  Future<void> deleteAllForNote(String noteId) async {
+  Future<void> deleteAllForNote(int noteId) async {
     await batch((b) {
       b.deleteWhere(dbNoteReagents, (t) => t.noteId.equals(noteId));
       b.deleteWhere(dbNoteMaterials, (t) => t.noteId.equals(noteId));

@@ -10,12 +10,27 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
   $DbNotesTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
     'id',
     aliasedName,
     false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _legacyIdMeta = const VerificationMeta(
+    'legacyId',
+  );
+  @override
+  late final GeneratedColumn<String> legacyId = GeneratedColumn<String>(
+    'legacy_id',
+    aliasedName,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _noteDateMeta = const VerificationMeta(
     'noteDate',
@@ -57,7 +72,8 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
     aliasedName,
     false,
     type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
   );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
@@ -68,7 +84,8 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
     aliasedName,
     false,
     type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
   );
   static const VerificationMeta _isPinnedMeta = const VerificationMeta(
     'isPinned',
@@ -129,6 +146,7 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    legacyId,
     noteDate,
     title,
     body,
@@ -153,8 +171,12 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    } else if (isInserting) {
-      context.missing(_idMeta);
+    }
+    if (data.containsKey('legacy_id')) {
+      context.handle(
+        _legacyIdMeta,
+        legacyId.isAcceptableOrUnknown(data['legacy_id']!, _legacyIdMeta),
+      );
     }
     if (data.containsKey('note_date')) {
       context.handle(
@@ -179,16 +201,12 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
         _createdAtMeta,
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
     }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
-    } else if (isInserting) {
-      context.missing(_updatedAtMeta);
     }
     if (data.containsKey('is_pinned')) {
       context.handle(
@@ -224,9 +242,13 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return DbNote(
       id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      legacyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}legacy_id'],
+      ),
       noteDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}note_date'],
@@ -273,7 +295,8 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
 }
 
 class DbNote extends DataClass implements Insertable<DbNote> {
-  final String id;
+  final int id;
+  final String? legacyId;
   final DateTime? noteDate;
   final String title;
   final String body;
@@ -285,6 +308,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   final String? project;
   const DbNote({
     required this.id,
+    this.legacyId,
     this.noteDate,
     required this.title,
     required this.body,
@@ -298,7 +322,10 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || legacyId != null) {
+      map['legacy_id'] = Variable<String>(legacyId);
+    }
     if (!nullToAbsent || noteDate != null) {
       map['note_date'] = Variable<DateTime>(noteDate);
     }
@@ -318,6 +345,9 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   DbNotesCompanion toCompanion(bool nullToAbsent) {
     return DbNotesCompanion(
       id: Value(id),
+      legacyId: legacyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(legacyId),
       noteDate: noteDate == null && nullToAbsent
           ? const Value.absent()
           : Value(noteDate),
@@ -340,7 +370,8 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DbNote(
-      id: serializer.fromJson<String>(json['id']),
+      id: serializer.fromJson<int>(json['id']),
+      legacyId: serializer.fromJson<String?>(json['legacyId']),
       noteDate: serializer.fromJson<DateTime?>(json['noteDate']),
       title: serializer.fromJson<String>(json['title']),
       body: serializer.fromJson<String>(json['body']),
@@ -356,7 +387,8 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
+      'id': serializer.toJson<int>(id),
+      'legacyId': serializer.toJson<String?>(legacyId),
       'noteDate': serializer.toJson<DateTime?>(noteDate),
       'title': serializer.toJson<String>(title),
       'body': serializer.toJson<String>(body),
@@ -370,7 +402,8 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   }
 
   DbNote copyWith({
-    String? id,
+    int? id,
+    Value<String?> legacyId = const Value.absent(),
     Value<DateTime?> noteDate = const Value.absent(),
     String? title,
     String? body,
@@ -382,6 +415,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
     Value<String?> project = const Value.absent(),
   }) => DbNote(
     id: id ?? this.id,
+    legacyId: legacyId.present ? legacyId.value : this.legacyId,
     noteDate: noteDate.present ? noteDate.value : this.noteDate,
     title: title ?? this.title,
     body: body ?? this.body,
@@ -395,6 +429,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   DbNote copyWithCompanion(DbNotesCompanion data) {
     return DbNote(
       id: data.id.present ? data.id.value : this.id,
+      legacyId: data.legacyId.present ? data.legacyId.value : this.legacyId,
       noteDate: data.noteDate.present ? data.noteDate.value : this.noteDate,
       title: data.title.present ? data.title.value : this.title,
       body: data.body.present ? data.body.value : this.body,
@@ -411,6 +446,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   String toString() {
     return (StringBuffer('DbNote(')
           ..write('id: $id, ')
+          ..write('legacyId: $legacyId, ')
           ..write('noteDate: $noteDate, ')
           ..write('title: $title, ')
           ..write('body: $body, ')
@@ -427,6 +463,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
   @override
   int get hashCode => Object.hash(
     id,
+    legacyId,
     noteDate,
     title,
     body,
@@ -442,6 +479,7 @@ class DbNote extends DataClass implements Insertable<DbNote> {
       identical(this, other) ||
       (other is DbNote &&
           other.id == this.id &&
+          other.legacyId == this.legacyId &&
           other.noteDate == this.noteDate &&
           other.title == this.title &&
           other.body == this.body &&
@@ -454,7 +492,8 @@ class DbNote extends DataClass implements Insertable<DbNote> {
 }
 
 class DbNotesCompanion extends UpdateCompanion<DbNote> {
-  final Value<String> id;
+  final Value<int> id;
+  final Value<String?> legacyId;
   final Value<DateTime?> noteDate;
   final Value<String> title;
   final Value<String> body;
@@ -464,9 +503,9 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   final Value<bool> isLocked;
   final Value<bool> isDeleted;
   final Value<String?> project;
-  final Value<int> rowid;
   const DbNotesCompanion({
     this.id = const Value.absent(),
+    this.legacyId = const Value.absent(),
     this.noteDate = const Value.absent(),
     this.title = const Value.absent(),
     this.body = const Value.absent(),
@@ -476,25 +515,23 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
     this.isLocked = const Value.absent(),
     this.isDeleted = const Value.absent(),
     this.project = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   DbNotesCompanion.insert({
-    required String id,
+    this.id = const Value.absent(),
+    this.legacyId = const Value.absent(),
     this.noteDate = const Value.absent(),
     this.title = const Value.absent(),
     this.body = const Value.absent(),
-    required DateTime createdAt,
-    required DateTime updatedAt,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.isLocked = const Value.absent(),
     this.isDeleted = const Value.absent(),
     this.project = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
+  });
   static Insertable<DbNote> custom({
-    Expression<String>? id,
+    Expression<int>? id,
+    Expression<String>? legacyId,
     Expression<DateTime>? noteDate,
     Expression<String>? title,
     Expression<String>? body,
@@ -504,10 +541,10 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
     Expression<bool>? isLocked,
     Expression<bool>? isDeleted,
     Expression<String>? project,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (legacyId != null) 'legacy_id': legacyId,
       if (noteDate != null) 'note_date': noteDate,
       if (title != null) 'title': title,
       if (body != null) 'body': body,
@@ -517,12 +554,12 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
       if (isLocked != null) 'is_locked': isLocked,
       if (isDeleted != null) 'is_deleted': isDeleted,
       if (project != null) 'project': project,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   DbNotesCompanion copyWith({
-    Value<String>? id,
+    Value<int>? id,
+    Value<String?>? legacyId,
     Value<DateTime?>? noteDate,
     Value<String>? title,
     Value<String>? body,
@@ -532,10 +569,10 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
     Value<bool>? isLocked,
     Value<bool>? isDeleted,
     Value<String?>? project,
-    Value<int>? rowid,
   }) {
     return DbNotesCompanion(
       id: id ?? this.id,
+      legacyId: legacyId ?? this.legacyId,
       noteDate: noteDate ?? this.noteDate,
       title: title ?? this.title,
       body: body ?? this.body,
@@ -545,7 +582,6 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
       isLocked: isLocked ?? this.isLocked,
       isDeleted: isDeleted ?? this.isDeleted,
       project: project ?? this.project,
-      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -553,7 +589,10 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (id.present) {
-      map['id'] = Variable<String>(id.value);
+      map['id'] = Variable<int>(id.value);
+    }
+    if (legacyId.present) {
+      map['legacy_id'] = Variable<String>(legacyId.value);
     }
     if (noteDate.present) {
       map['note_date'] = Variable<DateTime>(noteDate.value);
@@ -582,9 +621,6 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
     if (project.present) {
       map['project'] = Variable<String>(project.value);
     }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
     return map;
   }
 
@@ -592,6 +628,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
   String toString() {
     return (StringBuffer('DbNotesCompanion(')
           ..write('id: $id, ')
+          ..write('legacyId: $legacyId, ')
           ..write('noteDate: $noteDate, ')
           ..write('title: $title, ')
           ..write('body: $body, ')
@@ -600,8 +637,7 @@ class DbNotesCompanion extends UpdateCompanion<DbNote> {
           ..write('isPinned: $isPinned, ')
           ..write('isLocked: $isLocked, ')
           ..write('isDeleted: $isDeleted, ')
-          ..write('project: $project, ')
-          ..write('rowid: $rowid')
+          ..write('project: $project')
           ..write(')'))
         .toString();
   }
@@ -624,11 +660,11 @@ class $DbNoteReagentsTable extends DbNoteReagents
   );
   static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
   @override
-  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
     'note_id',
     aliasedName,
     false,
-    type: DriftSqlType.string,
+    type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
@@ -786,7 +822,7 @@ class $DbNoteReagentsTable extends DbNoteReagents
         data['${effectivePrefix}id'],
       )!,
       noteId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}note_id'],
       )!,
       name: attachedDatabase.typeMapping.read(
@@ -824,7 +860,7 @@ class $DbNoteReagentsTable extends DbNoteReagents
 
 class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
   final String id;
-  final String noteId;
+  final int noteId;
   final String name;
   final String? catalogNumber;
   final String? lotNumber;
@@ -845,7 +881,7 @@ class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['note_id'] = Variable<String>(noteId);
+    map['note_id'] = Variable<int>(noteId);
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || catalogNumber != null) {
       map['catalog_number'] = Variable<String>(catalogNumber);
@@ -889,7 +925,7 @@ class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DbNoteReagent(
       id: serializer.fromJson<String>(json['id']),
-      noteId: serializer.fromJson<String>(json['noteId']),
+      noteId: serializer.fromJson<int>(json['noteId']),
       name: serializer.fromJson<String>(json['name']),
       catalogNumber: serializer.fromJson<String?>(json['catalogNumber']),
       lotNumber: serializer.fromJson<String?>(json['lotNumber']),
@@ -903,7 +939,7 @@ class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'noteId': serializer.toJson<String>(noteId),
+      'noteId': serializer.toJson<int>(noteId),
       'name': serializer.toJson<String>(name),
       'catalogNumber': serializer.toJson<String?>(catalogNumber),
       'lotNumber': serializer.toJson<String?>(lotNumber),
@@ -915,7 +951,7 @@ class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
 
   DbNoteReagent copyWith({
     String? id,
-    String? noteId,
+    int? noteId,
     String? name,
     Value<String?> catalogNumber = const Value.absent(),
     Value<String?> lotNumber = const Value.absent(),
@@ -991,7 +1027,7 @@ class DbNoteReagent extends DataClass implements Insertable<DbNoteReagent> {
 
 class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
   final Value<String> id;
-  final Value<String> noteId;
+  final Value<int> noteId;
   final Value<String> name;
   final Value<String?> catalogNumber;
   final Value<String?> lotNumber;
@@ -1012,7 +1048,7 @@ class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
   });
   DbNoteReagentsCompanion.insert({
     required String id,
-    required String noteId,
+    required int noteId,
     required String name,
     this.catalogNumber = const Value.absent(),
     this.lotNumber = const Value.absent(),
@@ -1026,7 +1062,7 @@ class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
        createdAt = Value(createdAt);
   static Insertable<DbNoteReagent> custom({
     Expression<String>? id,
-    Expression<String>? noteId,
+    Expression<int>? noteId,
     Expression<String>? name,
     Expression<String>? catalogNumber,
     Expression<String>? lotNumber,
@@ -1050,7 +1086,7 @@ class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
 
   DbNoteReagentsCompanion copyWith({
     Value<String>? id,
-    Value<String>? noteId,
+    Value<int>? noteId,
     Value<String>? name,
     Value<String?>? catalogNumber,
     Value<String?>? lotNumber,
@@ -1079,7 +1115,7 @@ class DbNoteReagentsCompanion extends UpdateCompanion<DbNoteReagent> {
       map['id'] = Variable<String>(id.value);
     }
     if (noteId.present) {
-      map['note_id'] = Variable<String>(noteId.value);
+      map['note_id'] = Variable<int>(noteId.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -1139,11 +1175,11 @@ class $DbNoteMaterialsTable extends DbNoteMaterials
   );
   static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
   @override
-  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
     'note_id',
     aliasedName,
     false,
-    type: DriftSqlType.string,
+    type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
@@ -1301,7 +1337,7 @@ class $DbNoteMaterialsTable extends DbNoteMaterials
         data['${effectivePrefix}id'],
       )!,
       noteId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}note_id'],
       )!,
       name: attachedDatabase.typeMapping.read(
@@ -1339,7 +1375,7 @@ class $DbNoteMaterialsTable extends DbNoteMaterials
 
 class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
   final String id;
-  final String noteId;
+  final int noteId;
   final String name;
   final String? catalogNumber;
   final String? lotNumber;
@@ -1360,7 +1396,7 @@ class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['note_id'] = Variable<String>(noteId);
+    map['note_id'] = Variable<int>(noteId);
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || catalogNumber != null) {
       map['catalog_number'] = Variable<String>(catalogNumber);
@@ -1404,7 +1440,7 @@ class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DbNoteMaterial(
       id: serializer.fromJson<String>(json['id']),
-      noteId: serializer.fromJson<String>(json['noteId']),
+      noteId: serializer.fromJson<int>(json['noteId']),
       name: serializer.fromJson<String>(json['name']),
       catalogNumber: serializer.fromJson<String?>(json['catalogNumber']),
       lotNumber: serializer.fromJson<String?>(json['lotNumber']),
@@ -1418,7 +1454,7 @@ class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'noteId': serializer.toJson<String>(noteId),
+      'noteId': serializer.toJson<int>(noteId),
       'name': serializer.toJson<String>(name),
       'catalogNumber': serializer.toJson<String?>(catalogNumber),
       'lotNumber': serializer.toJson<String?>(lotNumber),
@@ -1430,7 +1466,7 @@ class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
 
   DbNoteMaterial copyWith({
     String? id,
-    String? noteId,
+    int? noteId,
     String? name,
     Value<String?> catalogNumber = const Value.absent(),
     Value<String?> lotNumber = const Value.absent(),
@@ -1506,7 +1542,7 @@ class DbNoteMaterial extends DataClass implements Insertable<DbNoteMaterial> {
 
 class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
   final Value<String> id;
-  final Value<String> noteId;
+  final Value<int> noteId;
   final Value<String> name;
   final Value<String?> catalogNumber;
   final Value<String?> lotNumber;
@@ -1527,7 +1563,7 @@ class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
   });
   DbNoteMaterialsCompanion.insert({
     required String id,
-    required String noteId,
+    required int noteId,
     required String name,
     this.catalogNumber = const Value.absent(),
     this.lotNumber = const Value.absent(),
@@ -1541,7 +1577,7 @@ class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
        createdAt = Value(createdAt);
   static Insertable<DbNoteMaterial> custom({
     Expression<String>? id,
-    Expression<String>? noteId,
+    Expression<int>? noteId,
     Expression<String>? name,
     Expression<String>? catalogNumber,
     Expression<String>? lotNumber,
@@ -1565,7 +1601,7 @@ class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
 
   DbNoteMaterialsCompanion copyWith({
     Value<String>? id,
-    Value<String>? noteId,
+    Value<int>? noteId,
     Value<String>? name,
     Value<String?>? catalogNumber,
     Value<String?>? lotNumber,
@@ -1594,7 +1630,7 @@ class DbNoteMaterialsCompanion extends UpdateCompanion<DbNoteMaterial> {
       map['id'] = Variable<String>(id.value);
     }
     if (noteId.present) {
-      map['note_id'] = Variable<String>(noteId.value);
+      map['note_id'] = Variable<int>(noteId.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -1654,11 +1690,11 @@ class $DbNoteReferencesTable extends DbNoteReferences
   );
   static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
   @override
-  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
     'note_id',
     aliasedName,
     false,
-    type: DriftSqlType.string,
+    type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _doiMeta = const VerificationMeta('doi');
@@ -1753,7 +1789,7 @@ class $DbNoteReferencesTable extends DbNoteReferences
         data['${effectivePrefix}id'],
       )!,
       noteId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}note_id'],
       )!,
       doi: attachedDatabase.typeMapping.read(
@@ -1779,7 +1815,7 @@ class $DbNoteReferencesTable extends DbNoteReferences
 
 class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
   final String id;
-  final String noteId;
+  final int noteId;
   final String doi;
   final String? memo;
   final DateTime createdAt;
@@ -1794,7 +1830,7 @@ class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['note_id'] = Variable<String>(noteId);
+    map['note_id'] = Variable<int>(noteId);
     map['doi'] = Variable<String>(doi);
     if (!nullToAbsent || memo != null) {
       map['memo'] = Variable<String>(memo);
@@ -1820,7 +1856,7 @@ class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DbNoteReference(
       id: serializer.fromJson<String>(json['id']),
-      noteId: serializer.fromJson<String>(json['noteId']),
+      noteId: serializer.fromJson<int>(json['noteId']),
       doi: serializer.fromJson<String>(json['doi']),
       memo: serializer.fromJson<String?>(json['memo']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -1831,7 +1867,7 @@ class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'noteId': serializer.toJson<String>(noteId),
+      'noteId': serializer.toJson<int>(noteId),
       'doi': serializer.toJson<String>(doi),
       'memo': serializer.toJson<String?>(memo),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1840,7 +1876,7 @@ class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
 
   DbNoteReference copyWith({
     String? id,
-    String? noteId,
+    int? noteId,
     String? doi,
     Value<String?> memo = const Value.absent(),
     DateTime? createdAt,
@@ -1888,7 +1924,7 @@ class DbNoteReference extends DataClass implements Insertable<DbNoteReference> {
 
 class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
   final Value<String> id;
-  final Value<String> noteId;
+  final Value<int> noteId;
   final Value<String> doi;
   final Value<String?> memo;
   final Value<DateTime> createdAt;
@@ -1903,7 +1939,7 @@ class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
   });
   DbNoteReferencesCompanion.insert({
     required String id,
-    required String noteId,
+    required int noteId,
     required String doi,
     this.memo = const Value.absent(),
     required DateTime createdAt,
@@ -1914,7 +1950,7 @@ class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
        createdAt = Value(createdAt);
   static Insertable<DbNoteReference> custom({
     Expression<String>? id,
-    Expression<String>? noteId,
+    Expression<int>? noteId,
     Expression<String>? doi,
     Expression<String>? memo,
     Expression<DateTime>? createdAt,
@@ -1932,7 +1968,7 @@ class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
 
   DbNoteReferencesCompanion copyWith({
     Value<String>? id,
-    Value<String>? noteId,
+    Value<int>? noteId,
     Value<String>? doi,
     Value<String?>? memo,
     Value<DateTime>? createdAt,
@@ -1955,7 +1991,7 @@ class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
       map['id'] = Variable<String>(id.value);
     }
     if (noteId.present) {
-      map['note_id'] = Variable<String>(noteId.value);
+      map['note_id'] = Variable<int>(noteId.value);
     }
     if (doi.present) {
       map['doi'] = Variable<String>(doi.value);
@@ -2011,21 +2047,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 
 typedef $$DbNotesTableCreateCompanionBuilder =
     DbNotesCompanion Function({
-      required String id,
-      Value<DateTime?> noteDate,
-      Value<String> title,
-      Value<String> body,
-      required DateTime createdAt,
-      required DateTime updatedAt,
-      Value<bool> isPinned,
-      Value<bool> isLocked,
-      Value<bool> isDeleted,
-      Value<String?> project,
-      Value<int> rowid,
-    });
-typedef $$DbNotesTableUpdateCompanionBuilder =
-    DbNotesCompanion Function({
-      Value<String> id,
+      Value<int> id,
+      Value<String?> legacyId,
       Value<DateTime?> noteDate,
       Value<String> title,
       Value<String> body,
@@ -2035,7 +2058,20 @@ typedef $$DbNotesTableUpdateCompanionBuilder =
       Value<bool> isLocked,
       Value<bool> isDeleted,
       Value<String?> project,
-      Value<int> rowid,
+    });
+typedef $$DbNotesTableUpdateCompanionBuilder =
+    DbNotesCompanion Function({
+      Value<int> id,
+      Value<String?> legacyId,
+      Value<DateTime?> noteDate,
+      Value<String> title,
+      Value<String> body,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<bool> isPinned,
+      Value<bool> isLocked,
+      Value<bool> isDeleted,
+      Value<String?> project,
     });
 
 class $$DbNotesTableFilterComposer
@@ -2047,8 +2083,13 @@ class $$DbNotesTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get id => $composableBuilder(
+  ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get legacyId => $composableBuilder(
+    column: $table.legacyId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2107,8 +2148,13 @@ class $$DbNotesTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get id => $composableBuilder(
+  ColumnOrderings<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get legacyId => $composableBuilder(
+    column: $table.legacyId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2167,8 +2213,11 @@ class $$DbNotesTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get id =>
+  GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get legacyId =>
+      $composableBuilder(column: $table.legacyId, builder: (column) => column);
 
   GeneratedColumn<DateTime> get noteDate =>
       $composableBuilder(column: $table.noteDate, builder: (column) => column);
@@ -2226,7 +2275,8 @@ class $$DbNotesTableTableManager
               $$DbNotesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> id = const Value.absent(),
+                Value<int> id = const Value.absent(),
+                Value<String?> legacyId = const Value.absent(),
                 Value<DateTime?> noteDate = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> body = const Value.absent(),
@@ -2236,9 +2286,9 @@ class $$DbNotesTableTableManager
                 Value<bool> isLocked = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
                 Value<String?> project = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => DbNotesCompanion(
                 id: id,
+                legacyId: legacyId,
                 noteDate: noteDate,
                 title: title,
                 body: body,
@@ -2248,23 +2298,23 @@ class $$DbNotesTableTableManager
                 isLocked: isLocked,
                 isDeleted: isDeleted,
                 project: project,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                required String id,
+                Value<int> id = const Value.absent(),
+                Value<String?> legacyId = const Value.absent(),
                 Value<DateTime?> noteDate = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> body = const Value.absent(),
-                required DateTime createdAt,
-                required DateTime updatedAt,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<bool> isLocked = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
                 Value<String?> project = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => DbNotesCompanion.insert(
                 id: id,
+                legacyId: legacyId,
                 noteDate: noteDate,
                 title: title,
                 body: body,
@@ -2274,7 +2324,6 @@ class $$DbNotesTableTableManager
                 isLocked: isLocked,
                 isDeleted: isDeleted,
                 project: project,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -2301,7 +2350,7 @@ typedef $$DbNotesTableProcessedTableManager =
 typedef $$DbNoteReagentsTableCreateCompanionBuilder =
     DbNoteReagentsCompanion Function({
       required String id,
-      required String noteId,
+      required int noteId,
       required String name,
       Value<String?> catalogNumber,
       Value<String?> lotNumber,
@@ -2313,7 +2362,7 @@ typedef $$DbNoteReagentsTableCreateCompanionBuilder =
 typedef $$DbNoteReagentsTableUpdateCompanionBuilder =
     DbNoteReagentsCompanion Function({
       Value<String> id,
-      Value<String> noteId,
+      Value<int> noteId,
       Value<String> name,
       Value<String?> catalogNumber,
       Value<String?> lotNumber,
@@ -2337,7 +2386,7 @@ class $$DbNoteReagentsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get noteId => $composableBuilder(
+  ColumnFilters<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnFilters(column),
   );
@@ -2387,7 +2436,7 @@ class $$DbNoteReagentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get noteId => $composableBuilder(
+  ColumnOrderings<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnOrderings(column),
   );
@@ -2435,7 +2484,7 @@ class $$DbNoteReagentsTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get noteId =>
+  GeneratedColumn<int> get noteId =>
       $composableBuilder(column: $table.noteId, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
@@ -2493,7 +2542,7 @@ class $$DbNoteReagentsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<String> noteId = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<String?> lotNumber = const Value.absent(),
@@ -2515,7 +2564,7 @@ class $$DbNoteReagentsTableTableManager
           createCompanionCallback:
               ({
                 required String id,
-                required String noteId,
+                required int noteId,
                 required String name,
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<String?> lotNumber = const Value.absent(),
@@ -2562,7 +2611,7 @@ typedef $$DbNoteReagentsTableProcessedTableManager =
 typedef $$DbNoteMaterialsTableCreateCompanionBuilder =
     DbNoteMaterialsCompanion Function({
       required String id,
-      required String noteId,
+      required int noteId,
       required String name,
       Value<String?> catalogNumber,
       Value<String?> lotNumber,
@@ -2574,7 +2623,7 @@ typedef $$DbNoteMaterialsTableCreateCompanionBuilder =
 typedef $$DbNoteMaterialsTableUpdateCompanionBuilder =
     DbNoteMaterialsCompanion Function({
       Value<String> id,
-      Value<String> noteId,
+      Value<int> noteId,
       Value<String> name,
       Value<String?> catalogNumber,
       Value<String?> lotNumber,
@@ -2598,7 +2647,7 @@ class $$DbNoteMaterialsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get noteId => $composableBuilder(
+  ColumnFilters<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnFilters(column),
   );
@@ -2648,7 +2697,7 @@ class $$DbNoteMaterialsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get noteId => $composableBuilder(
+  ColumnOrderings<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnOrderings(column),
   );
@@ -2696,7 +2745,7 @@ class $$DbNoteMaterialsTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get noteId =>
+  GeneratedColumn<int> get noteId =>
       $composableBuilder(column: $table.noteId, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
@@ -2758,7 +2807,7 @@ class $$DbNoteMaterialsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<String> noteId = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<String?> lotNumber = const Value.absent(),
@@ -2780,7 +2829,7 @@ class $$DbNoteMaterialsTableTableManager
           createCompanionCallback:
               ({
                 required String id,
-                required String noteId,
+                required int noteId,
                 required String name,
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<String?> lotNumber = const Value.absent(),
@@ -2827,7 +2876,7 @@ typedef $$DbNoteMaterialsTableProcessedTableManager =
 typedef $$DbNoteReferencesTableCreateCompanionBuilder =
     DbNoteReferencesCompanion Function({
       required String id,
-      required String noteId,
+      required int noteId,
       required String doi,
       Value<String?> memo,
       required DateTime createdAt,
@@ -2836,7 +2885,7 @@ typedef $$DbNoteReferencesTableCreateCompanionBuilder =
 typedef $$DbNoteReferencesTableUpdateCompanionBuilder =
     DbNoteReferencesCompanion Function({
       Value<String> id,
-      Value<String> noteId,
+      Value<int> noteId,
       Value<String> doi,
       Value<String?> memo,
       Value<DateTime> createdAt,
@@ -2857,7 +2906,7 @@ class $$DbNoteReferencesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get noteId => $composableBuilder(
+  ColumnFilters<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnFilters(column),
   );
@@ -2892,7 +2941,7 @@ class $$DbNoteReferencesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get noteId => $composableBuilder(
+  ColumnOrderings<int> get noteId => $composableBuilder(
     column: $table.noteId,
     builder: (column) => ColumnOrderings(column),
   );
@@ -2925,7 +2974,7 @@ class $$DbNoteReferencesTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get noteId =>
+  GeneratedColumn<int> get noteId =>
       $composableBuilder(column: $table.noteId, builder: (column) => column);
 
   GeneratedColumn<String> get doi =>
@@ -2976,7 +3025,7 @@ class $$DbNoteReferencesTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<String> noteId = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
                 Value<String> doi = const Value.absent(),
                 Value<String?> memo = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -2992,7 +3041,7 @@ class $$DbNoteReferencesTableTableManager
           createCompanionCallback:
               ({
                 required String id,
-                required String noteId,
+                required int noteId,
                 required String doi,
                 Value<String?> memo = const Value.absent(),
                 required DateTime createdAt,

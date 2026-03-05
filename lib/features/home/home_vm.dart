@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart'; // ✅ 추가
 
 import 'package:labnote/data/app_database.dart';
 import 'package:labnote/models/note_list_item.dart';
@@ -41,12 +40,11 @@ class HomeVm extends ChangeNotifier {
     }
     await refresh();
   }
-  Future<String> insertEmptyAndReturnId() async {
-    // insertNote는 AppDatabase에서 id를 반환하도록 구현되어 있음
-    final id = await _data.insertNote(title: '', body: '');
+
+  Future<int> insertEmptyAndReturnId() async {
+    final int id = await _data.insertNote(title: '', body: '');
     return id;
   }
-
 
   void toggleSearch() {
     searchVisible = !searchVisible;
@@ -79,8 +77,6 @@ class HomeVm extends ChangeNotifier {
       final visible = await _data.debugCountVisibleRows();
       debugPrint('DB rows(all incl deleted)=$all, visible(not deleted)=$visible');
 
-      // ✅ 웹에서는 전체 fetch 금지: 5개만 샘플로 가져와 로그
-      // (비웹에서도 동일하게 5개만 가져오므로 안전)
       final sample = await _data.debugSampleRowsIncludingDeleted(limit: 5);
       for (final r in sample) {
         debugPrint('row id=${r.id}, deleted=${r.isDeleted}, title=${r.title}');
@@ -164,18 +160,19 @@ class HomeVm extends ChangeNotifier {
   }
 
   // -------------------------
-  // Backup actions (BackupService v2 필요)
+  // Backup actions
   // -------------------------
   Future<void> exportBackupPlain(BuildContext context) async {
     final svc = context.read<BackupService>();
     await svc.exportBackup(password: null);
+
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('백업 내보내기 완료')));
   }
 
   Future<void> importBackupWithPreRestore(BuildContext context) async {
-    final svc = context.read<BackupService>();
+    final svc = context.read<BackupService>(); // ✅ 수정 (BackupService.of 제거)
 
     final raw = await svc.pickRawBackupText();
     if (raw == null) return;
@@ -183,7 +180,8 @@ class HomeVm extends ChangeNotifier {
     bool isEncrypted = false;
     try {
       final decoded = jsonDecode(raw);
-      isEncrypted = decoded is Map<String, dynamic> && decoded['encrypted'] == true;
+      isEncrypted =
+          decoded is Map<String, dynamic> && decoded['encrypted'] == true;
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

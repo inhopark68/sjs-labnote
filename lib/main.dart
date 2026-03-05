@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// -----------------------------
-// 프로젝트 내부 모듈 import
-// -----------------------------
 import 'data/app_database.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/home_vm.dart';
@@ -12,18 +9,10 @@ import 'features/notes/notes_page.dart';
 import 'services/backup_service.dart';
 import 'services/backup_service_impl.dart';
 
-import 'viewmodels/app_settings.dart';
-
-// void main() {runApp(MyApp());} 앱 실행만 하고 값을 반환하지 않음
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
-
-/// 앱 전체 DI(Provider) + MaterialApp 구성
-
-// @override는 **“부모(상위 클래스)나 인터페이스에 이미 선언된 메서드/프로퍼티를, 지금 클래스에서 재정의(덮어쓰기)한다”**는 표시입니다.
-// providers:는 “앱 전체에서 사용할 객체들을 여기서 미리 만들어 두겠다”는 뜻입니다.
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -32,48 +21,37 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // 1) DB: 앱 전체에서 단 1개 인스턴스
         Provider<AppDatabase>(
           create: (_) => AppDatabase(),
           dispose: (_, db) => db.close(),
         ),
 
-        // 2) AppSettings: 테마 등 설정 상태
-        ChangeNotifierProvider<AppSettings>(
-          create: (_) => AppSettings(),
+        // BackupService는 AppDatabase에 의존하므로 ProxyProvider 하나만 두는 게 깔끔합니다.
+        ProxyProvider<AppDatabase, BackupService>(
+          update: (_, db, __) => BackupServiceImpl(db),
         ),
 
-        // 3) BackupService: HomeVm에서 사용 (export/import)
-        Provider<BackupService>(
-          create: (ctx) => BackupServiceImpl(ctx.read<AppDatabase>()),
-        ),
-        
-        // 4) HomeVm: 첫 화면(HomeScreen)에서 사용
         ChangeNotifierProvider<HomeVm>(
           create: (ctx) => HomeVm(ctx.read<AppDatabase>()),
         ),
       ],
-      child: Builder(
-        builder: (context) {
-          final settings = context.watch<AppSettings>();
+      child: const AppRoot(),
+    );
+  }
+}
 
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            title: 'LabNote',
-            theme: ThemeData(
-              useMaterial3: true,
-              brightness: settings.darkMode ? Brightness.dark : Brightness.light,
-            ),
+class AppRoot extends StatelessWidget {
+  const AppRoot({super.key});
 
-            // ✅ 첫 화면 (홈페이지)
-            home: const HomeScreen(),
-
-            routes: {
-              '/notes': (_) => const NotesPage(),
-            },
-          );
-        },
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'LabNote',
+      home: const HomeScreen(),
+      routes: {
+        '/notes': (_) => const NotesPage(),
+      },
     );
   }
 }

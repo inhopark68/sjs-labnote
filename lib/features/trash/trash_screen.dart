@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/app_database.dart';
-import '../notes/note_detail_page.dart'; // 경로 맞게 조정
+import '../notes/note_detail_page.dart';
 
 class TrashScreen extends StatefulWidget {
   const TrashScreen({super.key});
@@ -21,10 +21,11 @@ class _TrashScreenState extends State<TrashScreen> {
   @override
   void initState() {
     super.initState();
+
     Future.microtask(_load);
+
     _searchCtrl.addListener(() {
-      // 타이핑마다 즉시 갱신(가벼운 앱이면 OK)
-      _load();
+      _load(); // 타이핑마다 즉시 갱신(가벼운 앱이면 OK)
     });
   }
 
@@ -36,7 +37,9 @@ class _TrashScreenState extends State<TrashScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final items = await _db.listDeletedNotes(query: _searchCtrl.text);
+
+    final items = await _db.listDeletedNotes(query: _searchCtrl.text.trim());
+
     if (!mounted) return;
     setState(() {
       _items = items;
@@ -44,15 +47,17 @@ class _TrashScreenState extends State<TrashScreen> {
     });
   }
 
-  Future<void> _restore(String id) async {
+  Future<void> _restore(int id) async {
     await _db.restoreNote(id);
+
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('복원했습니다.')));
+
     await _load();
   }
 
-  Future<void> _hardDelete(String id) async {
+  Future<void> _hardDelete(int id) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -77,9 +82,11 @@ class _TrashScreenState extends State<TrashScreen> {
     if (ok != true) return;
 
     await _db.hardDeleteNote(id);
+
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('완전 삭제했습니다.')));
+
     await _load();
   }
 
@@ -118,9 +125,12 @@ class _TrashScreenState extends State<TrashScreen> {
                         itemCount: _items.length,
                         itemBuilder: (context, i) {
                           final n = _items[i];
+
                           return Card(
                             margin: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             child: ListTile(
                               title: Text(n.title.isEmpty ? '(제목 없음)' : n.title),
                               subtitle: Text(
@@ -129,7 +139,6 @@ class _TrashScreenState extends State<TrashScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               onTap: () async {
-                                // 삭제 노트도 상세 열기(읽기 + 복원/완전삭제 메뉴)
                                 await Navigator.push(
                                   context,
                                   MaterialPageRoute(

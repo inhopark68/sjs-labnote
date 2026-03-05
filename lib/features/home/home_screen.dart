@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:labnote/data/app_database.dart';
 import 'package:labnote/features/notes/note_detail_page.dart';
 
-import 'home_vm.dart';
-import '../trash/trash_screen.dart'; // 경로 맞게
+
+import 'package:labnote/features/home/home_vm.dart';
+import 'package:labnote/features/trash/trash_screen.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,17 +20,27 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scrollCtrl = ScrollController();
   bool _inited = false;
 
+  HomeVm? _vm; // ✅ 스크롤 리스너에서 context.read 반복 방지
+
   @override
   void initState() {
     super.initState();
 
-    // 스크롤 끝에 가까워지면 loadMore()
-    _scrollCtrl.addListener(() {
-      final vm = context.read<HomeVm>();
-      if (_scrollCtrl.position.pixels >
-          _scrollCtrl.position.maxScrollExtent - 200) {
-        vm.loadMore();
-      }
+    // ✅ initState에서 context.read/watch는 피하고, 첫 프레임 이후에 세팅
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _vm = context.read<HomeVm>();
+
+      _scrollCtrl.addListener(() {
+        final vm = _vm;
+        if (vm == null) return;
+
+        if (_scrollCtrl.position.pixels >
+            _scrollCtrl.position.maxScrollExtent - 200) {
+          vm.loadMore();
+        }
+      });
     });
   }
 
@@ -67,7 +79,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: vm.loading ? null : vm.refresh,
           ),
-
           IconButton(
             tooltip: '휴지통',
             icon: const Icon(Icons.delete_outline),
@@ -76,8 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const TrashScreen()),
               );
-              // 휴지통에서 복원/삭제 후 돌아오면 목록 갱신
-              context.read<HomeVm>().init(); // 또는 loadMore 구조에 맞춰 갱신 메서드 호출
+              if (!context.mounted) return;
+              await context.read<HomeVm>().refresh();
             },
           ),
         ],
@@ -112,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: vm.items.length + (vm.loadingMore ? 1 : 0),
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
-                      // 로딩 더보기 표시
                       if (index >= vm.items.length) {
                         return const Padding(
                           padding: EdgeInsets.all(16),
@@ -122,7 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       final item = vm.items[index];
 
-                      // ✅ 스와이프 삭제 + Undo
                       return Dismissible(
                         key: ValueKey(item.id),
                         direction: DismissDirection.endToStart,
@@ -176,8 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           await vm.refresh();
                         },
                         child: ListTile(
-                          title:
-                              Text(item.title.isEmpty ? '(제목 없음)' : item.title),
+                          title: Text(item.title.isEmpty ? '(제목 없음)' : item.title),
                           subtitle: Text(item.bodyPreview),
                           leading: item.isPinned
                               ? const Icon(Icons.push_pin)
@@ -202,17 +210,25 @@ class _HomeScreenState extends State<HomeScreen> {
         tooltip: '새 노트',
         child: const Icon(Icons.add),
         onPressed: () async {
-          final id = await vm.insertEmptyAndReturnId();
-          final changed = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => NoteDetailPage(noteId: id)),
-          );
+          try {
+            final id = await vm.insertEmptyAndReturnId();
+            debugPrint('new note id=$id (${id.runtimeType})');
 
-          // 돌아오면 목록 갱신
-          if (changed == true) {
+            if (!context.mounted) return;
+
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => NoteDetailPage(noteId: id)),
+            );
+
+            if (!mounted) return;
             await vm.refresh();
-          } else {
-            await vm.refresh();
+          } catch (e, st) {
+            debugPrint('new note failed: $e\n$st');
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('새 노트 열기 실패: $e')),
+            );
           }
         },
       ),

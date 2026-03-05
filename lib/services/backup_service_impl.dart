@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+
 import 'package:labnote/data/app_database.dart';
 
 import 'backup_platform/download_file.dart' as dl;
@@ -63,8 +64,12 @@ class BackupServiceImpl implements BackupService {
     return bytes;
   }
 
+  // ✅ DbNote.id(int) 기반 + legacyId 포함(선택)
   Map<String, dynamic> _dbRowToJson(DbNote r) => <String, dynamic>{
+        // 하위호환을 위해 id는 숫자로 저장
         'id': r.id,
+        // 구버전 id가 있으면 같이 저장(선택)
+        if (r.legacyId != null) 'legacyId': r.legacyId,
         'title': r.title,
         'body': r.body,
         'createdAt': r.createdAt.toIso8601String(),
@@ -73,6 +78,7 @@ class BackupServiceImpl implements BackupService {
         'isLocked': r.isLocked,
         'isDeleted': r.isDeleted,
         'project': r.project,
+        'noteDate': r.noteDate?.toIso8601String(),
       };
 
   String _makeFilename({required bool encrypted}) {
@@ -100,7 +106,7 @@ class BackupServiceImpl implements BackupService {
       return utf8.decode(f.bytes!, allowMalformed: true);
     }
 
-    // ✅ 웹에서는 path 읽기 불가 → 예외 대신 null 처리
+    // ✅ 웹에서는 path 읽기 불가 → null 처리
     if (kIsWeb) return null;
 
     // 모바일/데스크탑인데 path가 없으면 실패
@@ -112,7 +118,6 @@ class BackupServiceImpl implements BackupService {
   // -----------------------
   // SAFE IMPORT (PRE-RESTORE + IMPORT)
   // -----------------------
-  
   @override
   Future<void> safeImportWithPreBackup({
     required String rawBackupText,
@@ -134,7 +139,9 @@ class BackupServiceImpl implements BackupService {
     Map<String, dynamic> root;
     try {
       final obj = jsonDecode(rawBackupText);
-      if (obj is! Map<String, dynamic>) throw Exception('백업 루트가 Map이 아닙니다.');
+      if (obj is! Map<String, dynamic>) {
+        throw Exception('백업 루트가 Map이 아닙니다.');
+      }
       root = obj;
     } catch (e) {
       throw Exception('백업 파일 형식이 올바르지 않습니다: $e');
@@ -155,7 +162,9 @@ class BackupServiceImpl implements BackupService {
       }
       final plainJson = _decryptContainerToPlainJson(root, importPassword);
       final obj = jsonDecode(plainJson);
-      if (obj is! Map<String, dynamic>) throw Exception('복호화 결과가 올바르지 않습니다.');
+      if (obj is! Map<String, dynamic>) {
+        throw Exception('복호화 결과가 올바르지 않습니다.');
+      }
       plainPayload = obj;
     }
 
@@ -164,36 +173,60 @@ class BackupServiceImpl implements BackupService {
     if (notesAny is! List) throw Exception('notes가 List가 아닙니다.');
 
     final notes = <Note>[];
+
     for (final e in notesAny) {
       if (e is! Map) continue;
       final m = e.cast<String, dynamic>();
 
-      final id = (m['id'] as String?)?.trim();
-      if (id == null || id.isEmpty) continue;
+      // ✅ 하위호환: id는 int 또는 string일 수 있음
+      final legacyId = _parseLegacyId(m['legacyId']) ?? _parseLegacyId(m['id']);
+      // 현재 스키마는 autoIncrement id를 새로 발급하므로, Note.id는 "더미"로 채움(0)
+      // (AppDatabase.replaceAllNotesFromBackup에서 id는 쓰지 않도록 구현되어 있어야 함)
+      const generatedId = 0;
+
+      final createdAt =
+          DateTime.tryParse((m['createdAt'] as String?) ?? '') ?? DateTime.now();
+      final updatedAt =
+          DateTime.tryParse((m['updatedAt'] as String?) ?? '') ?? DateTime.now();
+
+      final noteDate =
+          DateTime.tryParse((m['noteDate'] as String?) ?? '');
 
       notes.add(
         Note(
-          id: id,
+          id: generatedId,
+          legacyId: legacyId,
           title: (m['title'] as String?) ?? '',
           body: (m['body'] as String?) ?? '',
-          createdAt:
-              DateTime.tryParse((m['createdAt'] as String?) ?? '') ?? DateTime.now(),
-          updatedAt:
-              DateTime.tryParse((m['updatedAt'] as String?) ?? '') ?? DateTime.now(),
+          createdAt: createdAt,
+          updatedAt: updatedAt,
           isPinned: (m['isPinned'] as bool?) ?? false,
           isLocked: (m['isLocked'] as bool?) ?? false,
           isDeleted: (m['isDeleted'] as bool?) ?? false,
           project: m['project'] as String?,
+          noteDate: noteDate,
         ),
       );
     }
 
-    // 4) 전체 교체 복원 (당신 DB가 이미 제공!)
+    // 4) 전체 교체 복원
     await db.replaceAllNotesFromBackup(notes);
 
     if (kDebugMode) {
       debugPrint('Import complete: notes=${notes.length}, encrypted=$encryptedFlag');
     }
+  }
+
+  /// id/legacyId 필드가 int/String 무엇이든 String?로 정규화
+  String? _parseLegacyId(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v.toString();
+    if (v is num) return v.toInt().toString();
+    if (v is String) {
+      final t = v.trim();
+      return t.isEmpty ? null : t;
+    }
+    return v.toString();
   }
 
   // =========================================================

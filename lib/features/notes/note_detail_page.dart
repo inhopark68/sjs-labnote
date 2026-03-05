@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/app_database.dart'; // 경로 맞게 조정하세요
+import '../../data/app_database.dart';
 
 class NoteDetailPage extends StatefulWidget {
-  final String noteId;
+  final int noteId;
   const NoteDetailPage({super.key, required this.noteId});
 
   @override
@@ -12,25 +14,50 @@ class NoteDetailPage extends StatefulWidget {
 }
 
 class _NoteDetailPageState extends State<NoteDetailPage> {
-  // 노트 본문(삭제 여부 상관없이 표시)
-  Note? _note;
+  // ===== Note fields (editable) =====
+  final _titleCtrl = TextEditingController();
+  final _bodyCtrl = TextEditingController();
+  Timer? _debounce;
   bool _noteLoading = true;
+  bool _saving = false;
+  bool _dirty = false;
 
-  // 연결 항목들
+  Note? _note;
+  bool _noteIsDeleted = false;
+
+  // ===== Items =====
   List<DbNoteReagent> _reagents = const [];
   List<DbNoteMaterial> _materials = const [];
   List<DbNoteReference> _references = const [];
   bool _itemsLoading = true;
-
-  // 삭제 상태(soft delete)면 편집 차단 + 메뉴 변경
-  bool _noteIsDeleted = false;
 
   AppDatabase get _db => context.read<AppDatabase>();
 
   @override
   void initState() {
     super.initState();
+    _titleCtrl.addListener(_onChanged);
+    _bodyCtrl.addListener(_onChanged);
+
     Future.microtask(_loadAll);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _titleCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (_noteIsDeleted) return; // 삭제 노트는 편집 금지
+    _dirty = true;
+
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () async {
+      await _saveIfNeeded();
+    });
   }
 
   Future<void> _loadAll() async {
@@ -39,20 +66,24 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       _itemsLoading = true;
     });
 
-    // ✅ 삭제 여부 상관없이 노트 로드
     final noteAny = await _db.getNoteAny(widget.noteId);
-    final isDeleted = noteAny?.isDeleted ?? true; // 없으면 삭제 취급
+    final isDeleted = noteAny?.isDeleted ?? true;
 
-    // ✅ 항목 로드(노트가 없어도 noteId 기준으로 존재할 수 있으니 로드)
-    final dao = _db.noteItemsDao;
-    final reagents = await dao.listReagents(widget.noteId);
-    final materials = await dao.listMaterials(widget.noteId);
-    final refs = await dao.listReferences(widget.noteId);
+    final reagents = await _db.noteItemsDao.listReagents(widget.noteId);
+    final materials = await _db.noteItemsDao.listMaterials(widget.noteId);
+    final refs = await _db.noteItemsDao.listReferences(widget.noteId);
 
     if (!mounted) return;
+
+    _note = noteAny;
+    _noteIsDeleted = isDeleted;
+
+    // 노트 로딩 시 TextEditingController에 반영
+    _titleCtrl.text = noteAny?.title ?? '';
+    _bodyCtrl.text = noteAny?.body ?? '';
+    _dirty = false;
+
     setState(() {
-      _note = noteAny;
-      _noteIsDeleted = isDeleted;
       _reagents = reagents;
       _materials = materials;
       _references = refs;
@@ -63,6 +94,27 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   Future<void> _refresh() => _loadAll();
 
+  Future<void> _saveIfNeeded({bool force = false}) async {
+    if (_noteLoading) return;
+    if (_noteIsDeleted) return;
+    if (!_dirty && !force) return;
+
+    final title = _titleCtrl.text.trimRight();
+    final body = _bodyCtrl.text.trimRight();
+
+    setState(() => _saving = true);
+    try {
+      await _db.updateNote(
+        id: widget.noteId,
+        title: title,
+        body: body,
+      );
+      _dirty = false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
   void _blockedSnack() {
@@ -70,10 +122,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       const SnackBar(content: Text('삭제된 노트는 수정할 수 없습니다. 복원 후 수정하세요.')),
     );
   }
-
-  // =========================================================
-  // Note menu actions
-  // =========================================================
 
   Future<bool> _confirmDialog({
     required String title,
@@ -149,8 +197,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Future<void> _confirmHardDelete() async {
     final ok = await _confirmDialog(
       title: '완전 삭제',
-      message:
-          '이 노트를 완전히 삭제할까요?\n노트에 연결된 시약/재료/DOI 기록도 함께 삭제되며, 복구할 수 없습니다.',
+      message: '이 노트를 완전히 삭제할까요?\n노트에 연결된 시약/재료/DOI 기록도 함께 삭제되며, 복구할 수 없습니다.',
       okText: '완전 삭제',
     );
     if (!ok) return;
@@ -170,14 +217,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     }
   }
 
-  // =========================================================
-  // Add dialogs
-  // =========================================================
+  // ===== Add / Delete items =====
 
   Future<void> _addReagent() async {
     if (_noteIsDeleted) return _blockedSnack();
 
-    final input = await showDialog<_ItemEntryInput>(
+    final input = await showDialog<_ItemEntryInput?>(
       context: context,
       builder: (_) => const _ItemEntryDialog(title: '시약 추가'),
     );
@@ -200,7 +245,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Future<void> _addMaterial() async {
     if (_noteIsDeleted) return _blockedSnack();
 
-    final input = await showDialog<_ItemEntryInput>(
+    final input = await showDialog<_ItemEntryInput?>(
       context: context,
       builder: (_) => const _ItemEntryDialog(title: '재료 추가'),
     );
@@ -223,7 +268,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Future<void> _addReference() async {
     if (_noteIsDeleted) return _blockedSnack();
 
-    final input = await showDialog<_DoiEntryInput>(
+    final input = await showDialog<_DoiEntryInput?>(
       context: context,
       builder: (_) => const _DoiEntryDialog(),
     );
@@ -239,10 +284,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
     await _loadAll();
   }
-
-  // =========================================================
-  // Delete handlers
-  // =========================================================
 
   Future<void> _deleteReagent(String id) async {
     if (_noteIsDeleted) return _blockedSnack();
@@ -261,10 +302,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     await _db.noteItemsDao.deleteReference(id);
     await _loadAll();
   }
-
-  // =========================================================
-  // UI helpers
-  // =========================================================
 
   Widget _sectionHeader(String title, VoidCallback onAdd) {
     return Padding(
@@ -301,194 +338,209 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return parts.join(' · ');
   }
 
-  Widget _noteCard() {
-    if (_noteLoading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: LinearProgressIndicator(),
-      );
-    }
-    if (_note == null) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text('노트를 찾을 수 없습니다.'),
-      );
-    }
-    return Card(
-      child: ListTile(
-        title: Text(_note!.title.isEmpty ? '(제목 없음)' : _note!.title),
-        subtitle: Text(_note!.body),
-      ),
-    );
-  }
-
-  // =========================================================
-  // Build
-  // =========================================================
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('노트 상세'),
-        actions: [
-          IconButton(
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-            tooltip: '새로고침',
-          ),
+    if (_noteLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-          // ✅ 오른쪽 상단 메뉴(⋮): 상태에 따라 메뉴 구성이 달라짐
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              switch (v) {
-                case 'trash':
-                  _moveToTrash();
-                  break;
-                case 'restore':
-                  _restoreFromTrash();
-                  break;
-                case 'hard_delete':
-                  _confirmHardDelete();
-                  break;
-              }
-            },
-            itemBuilder: (context) {
-              if (_noteIsDeleted) {
-                return const [
-                  PopupMenuItem(value: 'restore', child: Text('복원')),
-                  PopupMenuItem(value: 'hard_delete', child: Text('완전 삭제')),
-                ];
-              }
-              return const [
-                PopupMenuItem(value: 'trash', child: Text('휴지통으로 이동')),
-                PopupMenuItem(value: 'hard_delete', child: Text('완전 삭제')),
-              ];
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(12),
-          children: [
-            // ✅ 삭제 상태 안내 배너
-            if (_noteIsDeleted)
+    final titleText = _titleCtrl.text.trim();
+    final appBarTitle = titleText.isEmpty ? '(제목 없음)' : titleText;
+
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        await _saveIfNeeded(force: true);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(appBarTitle),
+          actions: [
+            if (_saving)
               const Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      '이 노트는 삭제 상태입니다. 복원하면 시약/재료/DOI를 다시 수정할 수 있습니다.',
-                    ),
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
               ),
-
-            // ✅ 제목/본문 표시(삭제 노트도 표시)
-            _noteCard(),
-
-            // ✅ 시약/재료/DOI 섹션
-            if (_itemsLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else ...[
-              _sectionHeader('시약 기록', _addReagent),
-              if (_reagents.isEmpty)
+            IconButton(
+              tooltip: '저장',
+              onPressed: _noteIsDeleted ? _blockedSnack : () => _saveIfNeeded(force: true),
+              icon: const Icon(Icons.save),
+            ),
+            IconButton(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              tooltip: '새로고침',
+            ),
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                switch (v) {
+                  case 'trash':
+                    _moveToTrash();
+                    break;
+                  case 'restore':
+                    _restoreFromTrash();
+                    break;
+                  case 'hard_delete':
+                    _confirmHardDelete();
+                    break;
+                }
+              },
+              itemBuilder: (context) {
+                if (_noteIsDeleted) {
+                  return const [
+                    PopupMenuItem(value: 'restore', child: Text('복원')),
+                    PopupMenuItem(value: 'hard_delete', child: Text('완전 삭제')),
+                  ];
+                }
+                return const [
+                  PopupMenuItem(value: 'trash', child: Text('휴지통으로 이동')),
+                  PopupMenuItem(value: 'hard_delete', child: Text('완전 삭제')),
+                ];
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              if (_noteIsDeleted)
                 const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('등록된 시약이 없습니다.'),
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('이 노트는 삭제 상태입니다. 복원하면 제목/내용과 시약/재료/DOI를 다시 수정할 수 있습니다.'),
+                    ),
+                  ),
+                ),
+
+              // ===== ✅ 노트 본문 입력 영역 =====
+              TextField(
+                controller: _titleCtrl,
+                enabled: !_noteIsDeleted,
+                decoration: const InputDecoration(
+                  labelText: '제목',
+                  border: OutlineInputBorder(),
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bodyCtrl,
+                enabled: !_noteIsDeleted,
+                decoration: const InputDecoration(
+                  labelText: '연구 내용',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                ),
+                minLines: 10,
+                maxLines: null,
+                keyboardType: TextInputType.multiline,
+              ),
+
+              const SizedBox(height: 16),
+              const Divider(height: 32),
+
+              // ===== 기존 아이템 섹션들 =====
+              if (_itemsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
                 )
-              else
-                ..._reagents.map(
-                  (r) => Card(
-                    child: ListTile(
-                      dense: true,
-                      title: Text(r.name),
-                      subtitle: Text(
-                        _subtitleParts(
+              else ...[
+                _sectionHeader('시약 기록', _addReagent),
+                if (_reagents.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text('등록된 시약이 없습니다.'),
+                  )
+                else
+                  ..._reagents.map(
+                    (r) => Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text(r.name),
+                        subtitle: Text(_subtitleParts(
                           company: r.company,
                           cat: r.catalogNumber,
                           lot: r.lotNumber,
                           memo: r.memo,
+                        )),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReagent(r.id),
                         ),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: _noteIsDeleted
-                            ? _blockedSnack
-                            : () => _deleteReagent(r.id),
                       ),
                     ),
                   ),
-                ),
 
-              _sectionHeader('재료 기록', _addMaterial),
-              if (_materials.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('등록된 재료가 없습니다.'),
-                )
-              else
-                ..._materials.map(
-                  (m) => Card(
-                    child: ListTile(
-                      dense: true,
-                      title: Text(m.name),
-                      subtitle: Text(
-                        _subtitleParts(
+                _sectionHeader('재료 기록', _addMaterial),
+                if (_materials.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text('등록된 재료가 없습니다.'),
+                  )
+                else
+                  ..._materials.map(
+                    (m) => Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text(m.name),
+                        subtitle: Text(_subtitleParts(
                           company: m.company,
                           cat: m.catalogNumber,
                           lot: m.lotNumber,
                           memo: m.memo,
+                        )),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteMaterial(m.id),
                         ),
                       ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: _noteIsDeleted
-                            ? _blockedSnack
-                            : () => _deleteMaterial(m.id),
-                      ),
                     ),
                   ),
-                ),
 
-              _sectionHeader('References (DOI)', _addReference),
-              if (_references.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('등록된 DOI가 없습니다.'),
-                )
-              else
-                ..._references.map(
-                  (r) => Card(
-                    child: ListTile(
-                      dense: true,
-                      title: Text(r.doi),
-                      subtitle: Text((r.memo ?? '').trim()),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: _noteIsDeleted
-                            ? _blockedSnack
-                            : () => _deleteReference(r.id),
+                _sectionHeader('References (DOI)', _addReference),
+                if (_references.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text('등록된 DOI가 없습니다.'),
+                  )
+                else
+                  ..._references.map(
+                    (r) => Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text(r.doi),
+                        subtitle: Text((r.memo ?? '').trim()),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReference(r.id),
+                        ),
                       ),
                     ),
                   ),
-                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// =========================================================
-// Dialogs
-// =========================================================
+// =====================================================
+// Dialog payload types + dialogs
+// =====================================================
 
 class _ItemEntryInput {
   final String name;
@@ -497,7 +549,7 @@ class _ItemEntryInput {
   final String? company;
   final String? memo;
 
-  _ItemEntryInput({
+  const _ItemEntryInput({
     required this.name,
     this.catalogNumber,
     this.lotNumber,
@@ -516,22 +568,41 @@ class _ItemEntryDialog extends StatefulWidget {
 
 class _ItemEntryDialogState extends State<_ItemEntryDialog> {
   final _name = TextEditingController();
-  final _company = TextEditingController();
-  final _cat = TextEditingController();
+  final _catalog = TextEditingController();
   final _lot = TextEditingController();
+  final _company = TextEditingController();
   final _memo = TextEditingController();
 
   @override
   void dispose() {
     _name.dispose();
-    _company.dispose();
-    _cat.dispose();
+    _catalog.dispose();
     _lot.dispose();
+    _company.dispose();
     _memo.dispose();
     super.dispose();
   }
 
-  String? _n(String s) => s.trim().isEmpty ? null : s.trim();
+  String? _clean(TextEditingController c) {
+    final t = c.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  void _submit() {
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+
+    Navigator.pop(
+      context,
+      _ItemEntryInput(
+        name: name,
+        catalogNumber: _clean(_catalog),
+        lotNumber: _clean(_lot),
+        company: _clean(_company),
+        memo: _clean(_memo),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -539,27 +610,30 @@ class _ItemEntryDialogState extends State<_ItemEntryDialog> {
       title: Text(widget.title),
       content: SingleChildScrollView(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: '이름 *'),
               autofocus: true,
+              decoration: const InputDecoration(labelText: '이름 *'),
+              onSubmitted: (_) => _submit(),
             ),
             TextField(
               controller: _company,
-              decoration: const InputDecoration(labelText: '제품회사명'),
+              decoration: const InputDecoration(labelText: '회사'),
             ),
             TextField(
-              controller: _cat,
-              decoration: const InputDecoration(labelText: '카탈로그 번호'),
+              controller: _catalog,
+              decoration: const InputDecoration(labelText: 'Catalog No.'),
             ),
             TextField(
               controller: _lot,
-              decoration: const InputDecoration(labelText: 'Lot 번호'),
+              decoration: const InputDecoration(labelText: 'Lot No.'),
             ),
             TextField(
               controller: _memo,
               decoration: const InputDecoration(labelText: '메모'),
+              minLines: 1,
               maxLines: 3,
             ),
           ],
@@ -567,26 +641,12 @@ class _ItemEntryDialogState extends State<_ItemEntryDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, null),
           child: const Text('취소'),
         ),
         FilledButton(
-          onPressed: () {
-            final name = _name.text.trim();
-            if (name.isEmpty) return;
-
-            Navigator.pop(
-              context,
-              _ItemEntryInput(
-                name: name,
-                company: _n(_company.text),
-                catalogNumber: _n(_cat.text),
-                lotNumber: _n(_lot.text),
-                memo: _n(_memo.text),
-              ),
-            );
-          },
-          child: const Text('저장'),
+          onPressed: _submit,
+          child: const Text('추가'),
         ),
       ],
     );
@@ -596,7 +656,11 @@ class _ItemEntryDialogState extends State<_ItemEntryDialog> {
 class _DoiEntryInput {
   final String doi;
   final String? memo;
-  _DoiEntryInput({required this.doi, this.memo});
+
+  const _DoiEntryInput({
+    required this.doi,
+    this.memo,
+  });
 }
 
 class _DoiEntryDialog extends StatefulWidget {
@@ -617,24 +681,42 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
     super.dispose();
   }
 
+  String? _clean(TextEditingController c) {
+    final t = c.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  void _submit() {
+    final doi = _doi.text.trim();
+    if (doi.isEmpty) return;
+
+    Navigator.pop(
+      context,
+      _DoiEntryInput(
+        doi: doi,
+        memo: _clean(_memo),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('DOI 추가'),
       content: SingleChildScrollView(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _doi,
-              decoration: const InputDecoration(
-                labelText: 'DOI *',
-                hintText: '예) 10.1038/s41586-020-2649-2',
-              ),
               autofocus: true,
+              decoration: const InputDecoration(labelText: 'DOI * (예: 10.xxxx/xxxx)'),
+              onSubmitted: (_) => _submit(),
             ),
             TextField(
               controller: _memo,
               decoration: const InputDecoration(labelText: '메모'),
+              minLines: 1,
               maxLines: 3,
             ),
           ],
@@ -642,18 +724,12 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, null),
           child: const Text('취소'),
         ),
         FilledButton(
-          onPressed: () {
-            final doi = _doi.text.trim();
-            if (doi.isEmpty) return;
-
-            final memo = _memo.text.trim().isNotEmpty ? _memo.text.trim() : null;
-            Navigator.pop(context, _DoiEntryInput(doi: doi, memo: memo));
-          },
-          child: const Text('저장'),
+          onPressed: _submit,
+          child: const Text('추가'),
         ),
       ],
     );
