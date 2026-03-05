@@ -125,7 +125,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         body: body,
       );
       _dirty = false;
-      if (mounted) setState(() {}); // ✅ 저장 후 AppBar 상태 갱신
+      if (mounted) setState(() {}); // ✅ 저장 후 AppBar 상태(●) 갱신
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -363,74 +363,37 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return t.isEmpty ? '(제목 없음)' : t;
   }
 
-  // ✅ 더 예쁜 저장 상태 Chip (요청 반영)
-  Widget _saveStatusChip(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // 저장중
+  Widget _saveStatusChip() {
+    // 저장중 > 저장필요 > 저장됨 순
     if (_saving) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: Chip(
-          visualDensity: VisualDensity.compact,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 8),
-              Text('저장중…'),
-            ],
+      return const Padding(
+        padding: EdgeInsets.only(right: 8),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
       );
     }
-
-    // 삭제 노트는 표시 숨김(원하면 '읽기 전용' Chip으로 바꿀 수 있음)
-    if (_noteIsDeleted) return const SizedBox.shrink();
-
-    // 저장 필요
+    if (_noteIsDeleted) {
+      return const SizedBox.shrink();
+    }
     if (_dirty) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: Chip(
           visualDensity: VisualDensity.compact,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-          backgroundColor: theme.colorScheme.primaryContainer,
-          side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.35)),
-          labelStyle: TextStyle(color: theme.colorScheme.onPrimaryContainer),
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('●', style: TextStyle(color: theme.colorScheme.primary)),
-              const SizedBox(width: 8),
-              const Text('저장 필요'),
-            ],
-          ),
+          label: const Text('저장 필요'),
         ),
       );
     }
-
-    // 저장됨
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Chip(
         visualDensity: VisualDensity.compact,
-        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        side: BorderSide(color: theme.dividerColor.withOpacity(0.6)),
-        label: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: 16),
-            SizedBox(width: 6),
-            Text('저장됨'),
-          ],
-        ),
+        label: const Text('저장됨'),
       ),
     );
   }
@@ -452,11 +415,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         appBar: AppBar(
           title: Text(_currentTitleForAppBar()),
           actions: [
-            _saveStatusChip(context),
+            _saveStatusChip(),
 
             TextButton.icon(
-              onPressed:
-                  (_noteIsDeleted || _saving) ? null : () => _saveIfNeeded(force: true),
+              onPressed: (_noteIsDeleted || _saving) ? null : () => _saveIfNeeded(force: true),
               icon: const Icon(Icons.save),
               label: const Text('저장'),
             ),
@@ -565,9 +527,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         )),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteReagent(r.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReagent(r.id),
                         ),
                       ),
                     ),
@@ -593,9 +553,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         )),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteMaterial(m.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteMaterial(m.id),
                         ),
                       ),
                     ),
@@ -616,9 +574,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         subtitle: Text((r.memo ?? '').trim()),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteReference(r.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReference(r.id),
                         ),
                       ),
                     ),
