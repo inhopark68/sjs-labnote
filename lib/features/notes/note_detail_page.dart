@@ -127,8 +127,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   bool _suppressEditorListener = false;
 
   // ✅ 웹에서는 image_picker / mlkit 안정성 이슈가 많아서 숨김
-  bool get _ocrSupported => !kIsWeb;
-  bool get _imageInsertSupported => !kIsWeb;
+  bool get _ocrSupported => true; // UI 노출은 항상 //!kIsWeb;
+  bool get _imageInsertSupported => true; // UI 노출은 항상 //!kIsWeb;
 
   // ===== Items =====
   List<DbNoteReagent> _reagents = const [];
@@ -209,7 +209,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (_suppressEditorListener) return;
     if (_noteIsDeleted) return;
 
-    _enforceTitleOneLine(); // 원치 않으면 제거
+    //_enforceTitleOneLine(); // 원치 않으면 제거
     _markDirtyAndDebounceSave(triggerRebuild: true);
   }
 
@@ -1189,7 +1189,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
               // ===== Note editor (Quill) =====
               _editorHeader(
                 title: '연구제목',
-                onInsertImage: () {}, // 제목에는 이미지 삽입 비활성(원하면 연결)
+                onInsertImage: () => _insertImageInto(_titleQuill),
               ),
               _buildQuillEditor(
                 controller: _titleQuill,
