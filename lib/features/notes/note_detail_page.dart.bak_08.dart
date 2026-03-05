@@ -9,8 +9,6 @@ import 'package:provider/provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
-import 'package:dart_quill_delta/dart_quill_delta.dart';
-
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -19,7 +17,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../../data/app_database.dart';
-
 
 // =====================================================
 // Quill 저장/복원 유틸 (A안: Delta JSON을 DB 문자열로 저장)
@@ -42,47 +39,43 @@ String encodeDoc(quill.QuillController c) {
 }
 
 /// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
-
-  void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
-    final raw = (encodedOrText ?? '').trim();
-
-    if (raw.isEmpty) {
-      c.document = quill.Document()..insert(0, '');
-      c.updateSelection(
-        const TextSelection.collapsed(offset: 0),
-        quill.ChangeSource.local,
-      );
-      return;
-    }
-
-    // Delta JSON은 보통 "[" 로 시작하는 List 형태
-    if (raw.startsWith('[')) {
-      try {
-        final decoded = jsonDecode(raw);
-
-        if (decoded is List) {
-          // ✅ quill.Delta 타입이 안 보이는 조합에서도 동작하도록 dynamic 처리
-          final delta = Delta.fromJson(decoded);
-          final doc = quill.Document.fromDelta(delta);
-          c.document = doc;
-          c.updateSelection(
-            const TextSelection.collapsed(offset: 0),
-            quill.ChangeSource.local,
-          );
-          return;
-        }
-      } catch (_) {
-        // fallthrough -> plain text
-      }
-    }
-
-    // plain text로 처리
-    c.document = quill.Document()..insert(0, raw);
+void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
+  final raw = (encodedOrText ?? '').trim();
+  if (raw.isEmpty) {
+    c.document = quill.Document()..insert(0, '');
     c.updateSelection(
       const TextSelection.collapsed(offset: 0),
       quill.ChangeSource.local,
     );
+    return;
   }
+
+  // Delta JSON은 보통 "[" 로 시작 (List)
+  if (raw.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final delta = quill.Delta.fromJson(decoded);
+        final doc = quill.Document.fromDelta(delta);
+        c.document = doc;
+        c.updateSelection(
+          const TextSelection.collapsed(offset: 0),
+          quill.ChangeSource.local,
+        );
+        return;
+      }
+    } catch (_) {
+      // fallthrough -> plain text 취급
+    }
+  }
+
+  // 기존 데이터/호환: plain text
+  c.document = quill.Document()..insert(0, raw);
+  c.updateSelection(
+    const TextSelection.collapsed(offset: 0),
+    quill.ChangeSource.local,
+  );
+}
 
 // =====================================================
 // Page
@@ -695,9 +688,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
   }
 
-
-
-
   Widget _buildQuillEditor({
     required quill.QuillController controller,
     required FocusNode focusNode,
@@ -706,13 +696,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     required double minHeight,
     required bool enabled,
   }) {
-    // ✅ readOnly는 QuillEditor 파라미터가 아니라 "controller" 쪽으로 제어
-    // (11.x에서 readOnly를 controller에 두는 흐름이 흔함)
-    // 가능하면 상태가 바뀔 때만 갱신하도록 최소화
-    if (controller.readOnly != !enabled) {
-      controller.readOnly = !enabled;
-    }
-
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
       padding: const EdgeInsets.all(12),
@@ -720,24 +703,22 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         border: Border.all(color: Colors.black26),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: quill.QuillEditor.basic(
+      child: quill.QuillEditor(
         controller: controller,
         focusNode: focusNode,
         scrollController: scrollController,
-        config: quill.QuillEditorConfig(
+        configurations: quill.QuillEditorConfigurations(
           placeholder: placeholder,
-          // padding/scrollable/readOnly 같은 건 여기 또는 외부 컨테이너로 처리
-          // 필요 시 더 많은 설정을 QuillEditorConfig에 추가 가능
+          expands: false,
+          padding: EdgeInsets.zero,
+          readOnly: !enabled,
+          embedBuilders: kIsWeb
+              ? FlutterQuillEmbeds.editorWebBuilders()
+              : FlutterQuillEmbeds.editorBuilders(),
         ),
       ),
     );
   }
-
-
-
-
-
-
 
   // =====================================================
   // Image insert

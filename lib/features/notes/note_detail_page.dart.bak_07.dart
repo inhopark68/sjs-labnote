@@ -9,8 +9,6 @@ import 'package:provider/provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
-import 'package:dart_quill_delta/dart_quill_delta.dart';
-
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -20,21 +18,9 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 
 import '../../data/app_database.dart';
 
-
 // =====================================================
 // Quill 저장/복원 유틸 (A안: Delta JSON을 DB 문자열로 저장)
 // =====================================================
-
-Set<String> extractImagePathsFromDoc(quill.QuillController c) {
-  final paths = <String>{};
-  for (final op in c.document.toDelta().toList()) {
-    final data = op.data;
-    if (data is Map && data['image'] is String) {
-      paths.add(data['image'] as String);
-    }
-  }
-  return paths;
-}
 
 String encodeDoc(quill.QuillController c) {
   final json = c.document.toDelta().toJson();
@@ -42,47 +28,43 @@ String encodeDoc(quill.QuillController c) {
 }
 
 /// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
-
-  void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
-    final raw = (encodedOrText ?? '').trim();
-
-    if (raw.isEmpty) {
-      c.document = quill.Document()..insert(0, '');
-      c.updateSelection(
-        const TextSelection.collapsed(offset: 0),
-        quill.ChangeSource.local,
-      );
-      return;
-    }
-
-    // Delta JSON은 보통 "[" 로 시작하는 List 형태
-    if (raw.startsWith('[')) {
-      try {
-        final decoded = jsonDecode(raw);
-
-        if (decoded is List) {
-          // ✅ quill.Delta 타입이 안 보이는 조합에서도 동작하도록 dynamic 처리
-          final delta = Delta.fromJson(decoded);
-          final doc = quill.Document.fromDelta(delta);
-          c.document = doc;
-          c.updateSelection(
-            const TextSelection.collapsed(offset: 0),
-            quill.ChangeSource.local,
-          );
-          return;
-        }
-      } catch (_) {
-        // fallthrough -> plain text
-      }
-    }
-
-    // plain text로 처리
-    c.document = quill.Document()..insert(0, raw);
+void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
+  final raw = (encodedOrText ?? '').trim();
+  if (raw.isEmpty) {
+    c.document = quill.Document()..insert(0, '');
     c.updateSelection(
       const TextSelection.collapsed(offset: 0),
       quill.ChangeSource.local,
     );
+    return;
   }
+
+  // Delta JSON은 보통 "[" 로 시작 (List)
+  if (raw.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final delta = quill.Delta.fromJson(decoded);
+        final doc = quill.Document.fromDelta(delta);
+        c.document = doc;
+        c.updateSelection(
+          const TextSelection.collapsed(offset: 0),
+          quill.ChangeSource.local,
+        );
+        return;
+      }
+    } catch (_) {
+      // fallthrough -> plain text 취급
+    }
+  }
+
+  // 기존 데이터/호환: plain text
+  c.document = quill.Document()..insert(0, raw);
+  c.updateSelection(
+    const TextSelection.collapsed(offset: 0),
+    quill.ChangeSource.local,
+  );
+}
 
 // =====================================================
 // Page
@@ -135,9 +117,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   List<DbNoteMaterial> _materials = const [];
   List<DbNoteReference> _references = const [];
 
-  // ✅ cleanup 동시 실행 방지
-  bool _cleanupRunning = false;
-
   @override
   void initState() {
     super.initState();
@@ -164,7 +143,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   // =====================================================
-  // Load / Save
+  // Load / Save (A안)
   // =====================================================
 
   Future<void> _loadAll() async {
@@ -234,14 +213,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Future<void> _saveIfNeeded({bool force = false}) async {
+    if (_noteLoading) return;
     if (_noteIsDeleted) return;
-    if (!force && (!_dirty || _saving)) return;
-    if (_saving) return;
+    if (!_dirty && !force) return;
 
     final titleJson = encodeDoc(_titleQuill);
     final bodyJson = encodeDoc(_bodyQuill);
 
-    setState(() => _saving = true);
+    if (mounted) setState(() => _saving = true);
     try {
       await _db.updateNote(
         id: widget.noteId,
@@ -249,165 +228,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         body: bodyJson,
       );
       _dirty = false;
-
-      // ✅ 저장 성공 후: 현재 문서에서 안 쓰는 이미지 파일 정리 (락 포함)
-      await _deleteUnreferencedNoteImages();
-
       if (mounted) setState(() {});
-    } catch (e) {
-      // 저장 실패 시 dirty 유지
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장 실패: $e')),
-        );
-      }
     } finally {
       if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  // =====================================================
-  // 이미지 저장/정리 (최적화/안전 강화)
-  // - note_images/note_{id}/ 아래만 "관리 대상"
-  // - Quill image embed 값 정규화(file:// 제거)
-  // =====================================================
-
-  Future<Directory> _noteBaseImageDir() async {
-    final base = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(base.path, 'note_images'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
-
-  Future<Directory> _noteImageDir() async {
-    final base = await _noteBaseImageDir();
-    final dir = Directory(p.join(base.path, 'note_${widget.noteId}'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
-
-  String _noteImagePrefix() => 'img_';
-
-  // ✅ embed 값 정규화: file://... → /path/...
-  String _normalizeImageRef(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return t;
-
-    if (t.startsWith('file://')) {
-      try {
-        return Uri.parse(t).toFilePath(windows: false);
-      } catch (_) {
-        return t;
-      }
-    }
-    return t;
-  }
-
-  Future<String> _normalizeToAbsoluteIfInsideNoteDir(String path) async {
-    // path가 상대/이상한 값이어도 "우리 노트 디렉토리 내부에 있는 절대경로"로만 비교하고 싶음
-    final dir = await _noteImageDir();
-    final abs = p.isAbsolute(path) ? path : p.normalize(p.join(dir.path, path));
-    return abs;
-  }
-
-  Future<bool> _isManagedNoteImagePath(String path) async {
-    // 우리가 만든 note_images/note_{id}/ 내부 파일만 관리
-    final dir = await _noteImageDir();
-    final abs = p.normalize(path);
-    final root = p.normalize(dir.path);
-
-    // 디렉토리 트래버설 방지: root 하위인지 확인
-    if (!p.isWithin(root, abs)) return false;
-
-    // 파일명 prefix로 한 번 더 안전장치
-    final fileName = p.basename(abs);
-    return fileName.startsWith(_noteImagePrefix());
-  }
-
-  Future<Set<String>> _referencedImagesForThisNote() async {
-    final used = <String>{};
-
-    final refs = <String>{
-      ...extractImagePathsFromDoc(_titleQuill),
-      ...extractImagePathsFromDoc(_bodyQuill),
-    }.map(_normalizeImageRef);
-
-    // ref가 상대경로일 수도 있으니 note dir 기준으로 절대화 시도
-    final dir = await _noteImageDir();
-
-    for (final r in refs) {
-      if (r.isEmpty) continue;
-
-      // r이 절대경로면 그대로, 상대면 note dir 기준으로 합쳐서 절대화
-      final abs = p.isAbsolute(r) ? p.normalize(r) : p.normalize(p.join(dir.path, r));
-
-      // ✅ 관리 대상(노트 폴더 내부)만 used로 인정
-      if (p.isWithin(p.normalize(dir.path), abs)) {
-        used.add(abs);
-      }
-    }
-
-    return used;
-  }
-
-  Future<void> _deleteUnreferencedNoteImages() async {
-    if (_cleanupRunning) return;
-    _cleanupRunning = true;
-
-    try {
-      final used = await _referencedImagesForThisNote();
-      final dir = await _noteImageDir();
-      if (!await dir.exists()) return;
-
-      final files = dir
-          .listSync()
-          .whereType<File>()
-          .toList(growable: false);
-
-      for (final f in files) {
-        final abs = p.normalize(f.path);
-
-        // 안전: 우리가 관리하는 파일만
-        if (!await _isManagedNoteImagePath(abs)) continue;
-
-        // 참조 중이면 보존
-        if (used.contains(abs)) continue;
-
-        try {
-          await f.delete();
-        } catch (_) {}
-      }
-    } finally {
-      _cleanupRunning = false;
-    }
-  }
-
-  Future<void> _deleteAllNoteImages() async {
-    final dir = await _noteImageDir();
-    if (!await dir.exists()) return;
-
-    try {
-      // note_{id} 폴더 자체를 날리는 것이 가장 확실/빠름
-      await dir.delete(recursive: true);
-    } catch (_) {
-      // 실패 시 fallback: 파일별 삭제 시도
-      try {
-        final files = dir
-            .listSync()
-            .whereType<File>()
-            .toList(growable: false);
-        for (final f in files) {
-          final abs = p.normalize(f.path);
-          if (!await _isManagedNoteImagePath(abs)) continue;
-          try {
-            await f.delete();
-          } catch (_) {}
-        }
-      } catch (_) {}
     }
   }
 
@@ -460,13 +283,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return ok == true;
   }
 
-  // =====================================================
-  // Trash / Restore / Hard delete 정책
-  // - 휴지통 이동: 이미지 유지(복원 시 필요)
-  // - 복원: 그대로
-  // - 완전 삭제: 이미지 포함 전부 삭제
-  // =====================================================
-
   Future<void> _moveToTrash() async {
     final ok = await _confirmDialog(
       title: '휴지통으로 이동',
@@ -476,9 +292,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (!ok) return;
 
     try {
-      // 혹시 남은 변경사항이 있으면 저장 시도(실패해도 이동은 진행 가능)
-      await _saveIfNeeded(force: true);
-
       await _db.deleteNote(widget.noteId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -525,11 +338,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (!ok) return;
 
     try {
-      // ✅ 완전 삭제 전 이미지 폴더 먼저 삭제
-      await _deleteAllNoteImages();
-
       await _db.hardDeleteNote(widget.noteId);
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('노트를 완전 삭제했습니다.')),
@@ -695,9 +504,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
   }
 
-
-
-
   Widget _buildQuillEditor({
     required quill.QuillController controller,
     required FocusNode focusNode,
@@ -706,13 +512,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     required double minHeight,
     required bool enabled,
   }) {
-    // ✅ readOnly는 QuillEditor 파라미터가 아니라 "controller" 쪽으로 제어
-    // (11.x에서 readOnly를 controller에 두는 흐름이 흔함)
-    // 가능하면 상태가 바뀔 때만 갱신하도록 최소화
-    if (controller.readOnly != !enabled) {
-      controller.readOnly = !enabled;
-    }
-
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
       padding: const EdgeInsets.all(12),
@@ -720,24 +519,22 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         border: Border.all(color: Colors.black26),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: quill.QuillEditor.basic(
+      child: quill.QuillEditor(
         controller: controller,
         focusNode: focusNode,
         scrollController: scrollController,
-        config: quill.QuillEditorConfig(
+        configurations: quill.QuillEditorConfigurations(
           placeholder: placeholder,
-          // padding/scrollable/readOnly 같은 건 여기 또는 외부 컨테이너로 처리
-          // 필요 시 더 많은 설정을 QuillEditorConfig에 추가 가능
+          expands: false,
+          padding: EdgeInsets.zero,
+          readOnly: !enabled,
+          embedBuilders: kIsWeb
+              ? FlutterQuillEmbeds.editorWebBuilders()
+              : FlutterQuillEmbeds.editorBuilders(),
         ),
       ),
     );
   }
-
-
-
-
-
-
 
   // =====================================================
   // Image insert
@@ -770,10 +567,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
 
     final index = max(0, controller.selection.baseOffset);
-
-    // ✅ embed 경로 정규화(안전)
-    final embedPath = _normalizeImageRef(outFile.path);
-    final embed = quill.BlockEmbed.image(embedPath);
+    final embed = quill.BlockEmbed.image(outFile.path);
 
     controller.document.insert(index, embed);
     controller.updateSelection(
@@ -781,8 +575,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       quill.ChangeSource.local,
     );
 
-    // 이미지 삽입은 내용 변경이므로 dirty + autosave 트리거
-    _markDirtyAndDebounceSave(triggerRebuild: true);
+    setState(() {});
   }
 
   Future<ImageSource?> _pickSourceSheet() {
@@ -845,73 +638,48 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     final targetBytes = (targetMb * 1024 * 1024).round();
 
     final inputBytes = await inputFile.readAsBytes();
+    if (inputBytes.length <= targetBytes) return inputFile;
+
     final decoded = img.decodeImage(inputBytes);
     if (decoded == null) return inputFile;
 
-    final dir = await _noteImageDir();
-    final outPath = p.join(
-      dir.path,
-      '${_noteImagePrefix()}${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-
-    // target보다 작아도 "관리 폴더"로 재인코딩해 저장(원본 경로 불안정 방지)
-    if (inputBytes.length <= targetBytes) {
-      final jpg = img.encodeJpg(decoded, quality: 95);
-      final f = File(outPath);
-      await f.writeAsBytes(jpg, flush: true);
-      return f;
-    }
+    final dir = await getApplicationDocumentsDirectory();
+    final outPath = p.join(dir.path, 'note_img_${DateTime.now().millisecondsSinceEpoch}.jpg');
 
     img.Image working = decoded;
+    int width = working.width;
+    int height = working.height;
 
-    for (int resizeStep = 0; resizeStep < 10; resizeStep++) {
-      final best = _bestJpegUnderBytes(working, targetBytes);
-      if (best != null) {
-        final f = File(outPath);
-        await f.writeAsBytes(best, flush: true);
-        return f;
+    for (int resizeStep = 0; resizeStep < 8; resizeStep++) {
+      for (int q = 90; q >= 30; q -= 10) {
+        final jpg = img.encodeJpg(working, quality: q);
+        if (jpg.length <= targetBytes) {
+          final f = File(outPath);
+          await f.writeAsBytes(jpg, flush: true);
+          return f;
+        }
       }
 
-      final w = working.width;
-      final h = working.height;
+      final scale = 0.85;
+      final newW = max(320, (width * scale).round());
+      final newH = max(320, (height * scale).round());
+      if (newW == width && newH == height) break;
 
-      if (w <= 320 || h <= 320) break;
-
-      final scale = 0.88;
-      final newW = max(320, (w * scale).round());
-      final newH = max(320, (h * scale).round());
+      width = newW;
+      height = newH;
 
       working = img.copyResize(
         working,
-        width: newW,
-        height: newH,
+        width: width,
+        height: height,
         interpolation: img.Interpolation.average,
       );
     }
 
-    final fallback = img.encodeJpg(working, quality: 20);
+    final fallback = img.encodeJpg(working, quality: 25);
     final f = File(outPath);
     await f.writeAsBytes(fallback, flush: true);
     return f;
-  }
-
-  List<int>? _bestJpegUnderBytes(img.Image working, int targetBytes) {
-    int lo = 5;
-    int hi = 95;
-    List<int>? best;
-
-    while (lo <= hi) {
-      final mid = (lo + hi) >> 1;
-      final jpg = img.encodeJpg(working, quality: mid);
-
-      if (jpg.length <= targetBytes) {
-        best = jpg;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return best;
   }
 
   // =====================================================
@@ -988,7 +756,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   // =====================================================
-  // Items CRUD
+  // Items CRUD (기존 화면 유지)
   // =====================================================
 
   Future<void> _addReagent() async {
@@ -1057,6 +825,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
     if (result == null) return;
 
+    // 단일 DOI
     if (result is _DoiEntryInput) {
       await _db.noteItemsDao.insertReferenceRaw(
         id: _newId(),
@@ -1069,6 +838,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       return;
     }
 
+    // 다중 DOI
     if (result is List<_DoiEntryInput>) {
       for (final input in result) {
         await _db.noteItemsDao.insertReferenceRaw(
@@ -1115,13 +885,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     }
 
     return PopScope(
-      // 저장 중에는 뒤로가기 UX가 난해해져서 막는 편이 안전(원하면 true로 바꿔도 됨)
-      canPop: !_saving,
+      canPop: true,
       onPopInvoked: (didPop) async {
-        // PopScope는 pop 이후에도 호출될 수 있어 "최대한 저장 시도"만 한다.
-        try {
-          await _saveIfNeeded(force: true);
-        } catch (_) {}
+        await _saveIfNeeded(force: true);
       },
       child: Scaffold(
         appBar: AppBar(
@@ -1129,9 +895,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           actions: [
             _saveStatusChip(context),
             TextButton.icon(
-              onPressed: (_noteIsDeleted || _saving)
-                  ? null
-                  : () => _saveIfNeeded(force: true),
+              onPressed: (_noteIsDeleted || _saving) ? null : () => _saveIfNeeded(force: true),
               icon: const Icon(Icons.save),
               label: const Text('저장'),
             ),
@@ -1179,9 +943,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                   child: Card(
                     child: Padding(
                       padding: EdgeInsets.all(12),
-                      child: Text(
-                        '이 노트는 삭제 상태입니다. 복원하면 제목/내용과 시약/재료/DOI를 다시 수정할 수 있습니다.',
-                      ),
+                      child: Text('이 노트는 삭제 상태입니다. 복원하면 제목/내용과 시약/재료/DOI를 다시 수정할 수 있습니다.'),
                     ),
                   ),
                 ),
@@ -1189,7 +951,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
               // ===== Note editor (Quill) =====
               _editorHeader(
                 title: '연구제목',
-                onInsertImage: () {}, // 제목에는 이미지 삽입 비활성(원하면 연결)
+                onInsertImage: () => _insertImageInto(_titleQuill),
               ),
               _buildQuillEditor(
                 controller: _titleQuill,
@@ -1245,9 +1007,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         )),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteReagent(r.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReagent(r.id),
                         ),
                       ),
                     ),
@@ -1273,9 +1033,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         )),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteMaterial(m.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteMaterial(m.id),
                         ),
                       ),
                     ),
@@ -1296,9 +1054,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                         subtitle: Text((r.memo ?? '').trim()),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: _noteIsDeleted
-                              ? _blockedSnack
-                              : () => _deleteReference(r.id),
+                          onPressed: _noteIsDeleted ? _blockedSnack : () => _deleteReference(r.id),
                         ),
                       ),
                     ),
@@ -1336,6 +1092,7 @@ class _ItemEntryInput {
 // Dialog payload types + dialogs
 // =====================================================
 
+/// ✅ "시약 추가 / 재료 추가" 공용 다이얼로그
 class _ItemEntryDialog extends StatefulWidget {
   final String title;
   final bool enableOcr;
@@ -1762,6 +1519,7 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
   void _submit() {
     final memo = _clean(_memoCtrl);
 
+    // 후보 리스트 모드: 체크된 것들 다중 반환
     if (_candidates.isNotEmpty) {
       final picked = _selected.toList()..sort();
       if (picked.isEmpty) return;
@@ -1773,6 +1531,7 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
       return;
     }
 
+    // 단일 입력 모드
     final doi = _doiCtrl.text.trim();
     if (doi.isEmpty) return;
 
