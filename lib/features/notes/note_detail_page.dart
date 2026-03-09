@@ -39,6 +39,27 @@ String encodeDoc(quill.QuillController c) {
   return jsonEncode(json);
 }
 
+/// DB에 저장된 Quill Delta JSON 문자열을 사용자에게 보여줄 plain text로 변환
+/// 예: `[{"insert":"제목"}]` -> `제목`
+String quillStoredTextToPlain(String? encodedOrText) {
+  final raw = (encodedOrText ?? '').trim();
+  if (raw.isEmpty) return '';
+
+  if (raw.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final doc = quill.Document.fromJson(decoded);
+        return doc.toPlainText().replaceAll('\n', ' ').trim();
+      }
+    } catch (_) {
+      // plain text로 fallback
+    }
+  }
+
+  return raw.replaceAll('\n', ' ').trim();
+}
+
 /// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
 void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
@@ -76,6 +97,606 @@ void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
 }
 
 // =====================================================
+// Item dialog payload
+// =====================================================
+
+class _ItemEntryInput {
+  final String name;
+  final String? catalogNumber;
+  final String? lotNumber;
+  final String? company;
+  final String? memo;
+
+  const _ItemEntryInput({
+    required this.name,
+    this.catalogNumber,
+    this.lotNumber,
+    this.company,
+    this.memo,
+  });
+}
+
+// =====================================================
+// Item dialog
+// =====================================================
+
+class _ItemEntryDialog extends StatefulWidget {
+  final String title;
+  final bool enableOcr;
+  final Future<String?> Function()? onRequestOcrText;
+
+  const _ItemEntryDialog({
+    required this.title,
+    this.enableOcr = false,
+    this.onRequestOcrText,
+  });
+
+  @override
+  State<_ItemEntryDialog> createState() => _ItemEntryDialogState();
+}
+
+class _ItemEntryDialogState extends State<_ItemEntryDialog> {
+  final _name = TextEditingController();
+  final _catalog = TextEditingController();
+  final _lot = TextEditingController();
+  final _company = TextEditingController();
+  final _memo = TextEditingController();
+
+  bool _ocrRunning = false;
+
+  List<String> _nameCandidates = const [];
+  final Set<String> _selectedNames = <String>{};
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _catalog.dispose();
+    _lot.dispose();
+    _company.dispose();
+    _memo.dispose();
+    super.dispose();
+  }
+
+  String? _clean(TextEditingController c) {
+    final t = c.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  void _submit() {
+    if (_nameCandidates.isNotEmpty) {
+      final picked = _selectedNames.toList()..sort();
+      if (picked.isEmpty) return;
+
+      final first = picked.first;
+      if (_name.text.trim().isEmpty) {
+        _name.text = first;
+      }
+
+      final extra = picked.length > 1 ? picked.skip(1).join('\n') : '';
+      if (extra.isNotEmpty && _memo.text.trim().isEmpty) {
+        _memo.text = '추가 후보:\n$extra';
+      }
+    }
+
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+
+    Navigator.pop(
+      context,
+      _ItemEntryInput(
+        name: name,
+        catalogNumber: _clean(_catalog),
+        lotNumber: _clean(_lot),
+        company: _clean(_company),
+        memo: _clean(_memo),
+      ),
+    );
+  }
+
+  List<String> _lines(String text) {
+    return text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  _ParsedItem _parseItemFromOcr(String raw) {
+    final text = raw.replaceAll('\r', '\n');
+    final lines = _lines(text);
+
+    String? cat;
+    String? lot;
+    String? company;
+    final nameCandidates = <String>{};
+    final memoLines = <String>[];
+
+    String stripPrefix(String line) {
+      final idx = line.indexOf(':');
+      if (idx >= 0 && idx + 1 < line.length) {
+        return line.substring(idx + 1).trim();
+      }
+      return line.trim();
+    }
+
+    bool looksLikeNoise(String s) {
+      if (s.length < 2) return true;
+      if (RegExp(r'^\d+$').hasMatch(s)) return true;
+      return false;
+    }
+
+    for (final line in lines) {
+      final lower = line.toLowerCase();
+
+      if (RegExp(r'\b10\.\d{4,9}/').hasMatch(line)) {
+        memoLines.add(line);
+        continue;
+      }
+
+      if (lower.startsWith('cat') || lower.startsWith('catalog')) {
+        cat ??= stripPrefix(line);
+        continue;
+      }
+      if (lower.startsWith('lot')) {
+        lot ??= stripPrefix(line);
+        continue;
+      }
+      if (lower.startsWith('company') ||
+          lower.startsWith('vendor') ||
+          lower.startsWith('supplier')) {
+        company ??= stripPrefix(line);
+        continue;
+      }
+
+      final cleaned = line.contains(':') ? stripPrefix(line) : line.trim();
+      if (!looksLikeNoise(cleaned)) {
+        nameCandidates.add(cleaned);
+      } else {
+        memoLines.add(line);
+      }
+    }
+
+    final names = nameCandidates.toList();
+    if (names.length > 30) {
+      names.removeRange(30, names.length);
+    }
+
+    return _ParsedItem(
+      catalog: cat,
+      lot: lot,
+      company: company,
+      nameCandidates: names,
+      memo: memoLines.isEmpty ? null : memoLines.join('\n'),
+    );
+  }
+
+  Future<void> _runOcrFill() async {
+    final fn = widget.onRequestOcrText;
+    if (!widget.enableOcr || fn == null) return;
+
+    setState(() => _ocrRunning = true);
+    try {
+      final raw = await fn();
+      if (!mounted || raw == null) return;
+
+      final parsed = _parseItemFromOcr(raw);
+
+      if (_catalog.text.trim().isEmpty &&
+          (parsed.catalog ?? '').trim().isNotEmpty) {
+        _catalog.text = parsed.catalog!.trim();
+      }
+      if (_lot.text.trim().isEmpty && (parsed.lot ?? '').trim().isNotEmpty) {
+        _lot.text = parsed.lot!.trim();
+      }
+      if (_company.text.trim().isEmpty &&
+          (parsed.company ?? '').trim().isNotEmpty) {
+        _company.text = parsed.company!.trim();
+      }
+      if (_memo.text.trim().isEmpty && (parsed.memo ?? '').trim().isNotEmpty) {
+        _memo.text = parsed.memo!.trim();
+      }
+
+      final candidates = parsed.nameCandidates;
+      if (candidates.isEmpty) {
+        if (_memo.text.trim().isEmpty) {
+          _memo.text = raw.trim();
+        }
+        return;
+      }
+
+      if (candidates.length == 1) {
+        if (_name.text.trim().isEmpty) {
+          _name.text = candidates.first;
+        }
+        setState(() {
+          _nameCandidates = const [];
+          _selectedNames.clear();
+        });
+        return;
+      }
+
+      setState(() {
+        _nameCandidates = candidates;
+        _selectedNames
+          ..clear()
+          ..addAll(candidates);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _ocrRunning = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          Expanded(child: Text(widget.title)),
+          if (widget.enableOcr)
+            TextButton.icon(
+              onPressed: _ocrRunning ? null : _runOcrFill,
+              icon: _ocrRunning
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.document_scanner_outlined, size: 18),
+              label: Text(_ocrRunning ? 'OCR중…' : 'OCR'),
+            ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_nameCandidates.isEmpty) ...[
+              TextField(
+                controller: _name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '이름 *'),
+                onSubmitted: (_) => _submit(),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('OCR로 여러 항목을 찾았습니다.\n추가할 항목을 선택하세요.'),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        setState(() => _selectedNames.addAll(_nameCandidates)),
+                    child: const Text('전체 선택'),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _selectedNames.clear()),
+                    child: const Text('전체 해제'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _nameCandidates.length,
+                  itemBuilder: (_, i) {
+                    final name = _nameCandidates[i];
+                    final checked = _selectedNames.contains(name);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: checked,
+                      title: Text(name),
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selectedNames.add(name);
+                          } else {
+                            _selectedNames.remove(name);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _name,
+                decoration: const InputDecoration(
+                  labelText: '대표 이름(선택)',
+                  helperText: '선택 목록에서 첫 번째가 자동으로 들어갑니다. 필요하면 수정하세요.',
+                ),
+              ),
+            ],
+            TextField(
+              controller: _company,
+              decoration: const InputDecoration(labelText: '회사'),
+            ),
+            TextField(
+              controller: _catalog,
+              decoration: const InputDecoration(labelText: 'Catalog No.'),
+            ),
+            TextField(
+              controller: _lot,
+              decoration: const InputDecoration(labelText: 'Lot No.'),
+            ),
+            TextField(
+              controller: _memo,
+              decoration: const InputDecoration(labelText: '메모'),
+              minLines: 1,
+              maxLines: 4,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('취소'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('추가'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ParsedItem {
+  final String? catalog;
+  final String? lot;
+  final String? company;
+  final List<String> nameCandidates;
+  final String? memo;
+
+  const _ParsedItem({
+    required this.catalog,
+    required this.lot,
+    required this.company,
+    required this.nameCandidates,
+    required this.memo,
+  });
+}
+
+// =====================================================
+// DOI dialog payload
+// =====================================================
+
+class _DoiEntryInput {
+  final String doi;
+  final String? memo;
+
+  const _DoiEntryInput({
+    required this.doi,
+    this.memo,
+  });
+}
+
+// =====================================================
+// DOI dialog
+// =====================================================
+
+class _DoiEntryDialog extends StatefulWidget {
+  final bool enableOcr;
+  final Future<String?> Function()? onRequestOcrText;
+
+  const _DoiEntryDialog({
+    this.enableOcr = false,
+    this.onRequestOcrText,
+  });
+
+  @override
+  State<_DoiEntryDialog> createState() => _DoiEntryDialogState();
+}
+
+class _DoiEntryDialogState extends State<_DoiEntryDialog> {
+  final _doiCtrl = TextEditingController();
+  final _memoCtrl = TextEditingController();
+
+  bool _ocrRunning = false;
+
+  List<String> _candidates = const [];
+  final Set<String> _selected = <String>{};
+
+  @override
+  void dispose() {
+    _doiCtrl.dispose();
+    _memoCtrl.dispose();
+    super.dispose();
+  }
+
+  String? _clean(TextEditingController c) {
+    final t = c.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  static List<String> _extractDoisFromText(String text) {
+    final re = RegExp(
+      r'\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b',
+      caseSensitive: false,
+    );
+
+    final found = <String>{};
+    for (final m in re.allMatches(text)) {
+      final doi = m.group(0)?.trim();
+      if (doi != null && doi.isNotEmpty) {
+        found.add(doi);
+      }
+    }
+
+    final list = found.toList()..sort();
+    return list;
+  }
+
+  Future<void> _runOcrAndExtract() async {
+    final fn = widget.onRequestOcrText;
+    if (!widget.enableOcr || fn == null) return;
+
+    setState(() => _ocrRunning = true);
+    try {
+      final raw = await fn();
+      if (!mounted || raw == null) return;
+
+      final dois = _extractDoisFromText(raw);
+      if (dois.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OCR 결과에서 DOI(10.xxxx/xxxx)를 찾지 못했습니다.'),
+          ),
+        );
+        return;
+      }
+
+      if (dois.length == 1) {
+        _doiCtrl.text = dois.first;
+        setState(() {
+          _candidates = const [];
+          _selected.clear();
+        });
+        return;
+      }
+
+      setState(() {
+        _candidates = dois;
+        _selected
+          ..clear()
+          ..addAll(dois);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _ocrRunning = false);
+      }
+    }
+  }
+
+  void _submit() {
+    final memo = _clean(_memoCtrl);
+
+    if (_candidates.isNotEmpty) {
+      final picked = _selected.toList()..sort();
+      if (picked.isEmpty) return;
+
+      Navigator.pop(
+        context,
+        picked
+            .map((d) => _DoiEntryInput(doi: d, memo: memo))
+            .toList(growable: false),
+      );
+      return;
+    }
+
+    final doi = _doiCtrl.text.trim();
+    if (doi.isEmpty) return;
+
+    Navigator.pop(context, _DoiEntryInput(doi: doi, memo: memo));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Expanded(child: Text('DOI 추가')),
+          if (widget.enableOcr)
+            TextButton.icon(
+              onPressed: _ocrRunning ? null : _runOcrAndExtract,
+              icon: _ocrRunning
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.document_scanner_outlined, size: 18),
+              label: Text(_ocrRunning ? 'OCR중…' : 'OCR'),
+            ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_candidates.isEmpty) ...[
+              TextField(
+                controller: _doiCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'DOI * (예: 10.xxxx/xxxx)',
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('OCR로 여러 DOI를 찾았습니다.\n추가할 DOI를 선택하세요.'),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        setState(() => _selected.addAll(_candidates)),
+                    child: const Text('전체 선택'),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _selected.clear()),
+                    child: const Text('전체 해제'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _candidates.length,
+                  itemBuilder: (_, i) {
+                    final doi = _candidates[i];
+                    final checked = _selected.contains(doi);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: checked,
+                      title: Text(doi),
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selected.add(doi);
+                          } else {
+                            _selected.remove(doi);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: _memoCtrl,
+              decoration: const InputDecoration(labelText: '메모(선택)'),
+              minLines: 1,
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('취소'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('추가'),
+        ),
+      ],
+    );
+  }
+}
+
+// =====================================================
 // Page
 // =====================================================
 
@@ -88,10 +709,8 @@ class NoteDetailPage extends StatefulWidget {
 }
 
 class _NoteDetailPageState extends State<NoteDetailPage> {
-  // ===== DB =====
   AppDatabase get _db => context.read<AppDatabase>();
 
-  // ===== Editor controllers =====
   final quill.QuillController _titleQuill = quill.QuillController.basic();
   final quill.QuillController _bodyQuill = quill.QuillController.basic();
 
@@ -101,10 +720,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   final ScrollController _titleScroll = ScrollController();
   final ScrollController _bodyScroll = ScrollController();
 
-  // ===== Image picker =====
   final ImagePicker _picker = ImagePicker();
 
-  // ===== Autosave =====
   Timer? _debounce;
   bool _noteLoading = true;
   bool _itemsLoading = true;
@@ -112,21 +729,18 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   bool _saving = false;
   bool _dirty = false;
 
-  Note? _note; // (현재는 사용 안 하지만 유지)
+  Note? _note;
   bool _noteIsDeleted = false;
 
   bool _suppressEditorListener = false;
 
-  // ✅ 웹에서는 image_picker / mlkit 안정성 이슈가 많아서 숨김
   bool get _ocrSupported => !kIsWeb;
   bool get _imageInsertSupported => !kIsWeb;
 
-  // ===== Items =====
   List<DbNoteReagent> _reagents = const [];
   List<DbNoteMaterial> _materials = const [];
   List<DbNoteReference> _references = const [];
 
-  // ✅ cleanup 동시 실행 방지
   bool _cleanupRunning = false;
 
   @override
@@ -146,6 +760,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     _titleQuill.removeListener(_onTitleChanged);
     _bodyQuill.removeListener(_onBodyChanged);
 
+    _titleQuill.dispose();
+    _bodyQuill.dispose();
+
     _titleFocus.dispose();
     _bodyFocus.dispose();
     _titleScroll.dispose();
@@ -153,10 +770,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
     super.dispose();
   }
-
-  // =====================================================
-  // Load / Save
-  // =====================================================
 
   Future<void> _loadAll() async {
     setState(() {
@@ -200,7 +813,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (_suppressEditorListener) return;
     if (_noteIsDeleted) return;
 
-    _enforceTitleOneLine(); // 원치 않으면 제거
+    _enforceTitleOneLine();
     _markDirtyAndDebounceSave(triggerRebuild: true);
   }
 
@@ -241,12 +854,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       );
       _dirty = false;
 
-      // ✅ 저장 성공 후: 현재 문서에서 안 쓰는 이미지 파일 정리 (락 포함)
       await _deleteUnreferencedNoteImages();
 
       if (mounted) setState(() {});
     } catch (e) {
-      // 저장 실패 시 dirty 유지
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('저장 실패: $e')),
@@ -256,12 +867,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       if (mounted) setState(() => _saving = false);
     }
   }
-
-  // =====================================================
-  // 이미지 저장/정리 (최적화/안전 강화)
-  // - note_images/note_{id}/ 아래만 "관리 대상"
-  // - Quill image embed 값 정규화(file:// 제거)
-  // =====================================================
 
   Future<Directory> _noteBaseImageDir() async {
     final base = await getApplicationDocumentsDirectory();
@@ -283,7 +888,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   String _noteImagePrefix() => 'img_';
 
-  // ✅ embed 값 정규화: file://... → /path/...
   String _normalizeImageRef(String s) {
     final t = s.trim();
     if (t.isEmpty) return t;
@@ -299,15 +903,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Future<bool> _isManagedNoteImagePath(String path) async {
-    // 우리가 만든 note_images/note_{id}/ 내부 파일만 관리
     final dir = await _noteImageDir();
     final abs = p.normalize(path);
     final root = p.normalize(dir.path);
 
-    // 디렉토리 트래버설 방지: root 하위인지 확인
     if (!p.isWithin(root, abs)) return false;
 
-    // 파일명 prefix로 한 번 더 안전장치
     final fileName = p.basename(abs);
     return fileName.startsWith(_noteImagePrefix());
   }
@@ -320,16 +921,15 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       ...extractImagePathsFromDoc(_bodyQuill),
     }.map(_normalizeImageRef);
 
-    // ref가 상대경로일 수도 있으니 note dir 기준으로 절대화 시도
     final dir = await _noteImageDir();
 
     for (final r in refs) {
       if (r.isEmpty) continue;
 
-      // r이 절대경로면 그대로, 상대면 note dir 기준으로 합쳐서 절대화
-      final abs = p.isAbsolute(r) ? p.normalize(r) : p.normalize(p.join(dir.path, r));
+      final abs = p.isAbsolute(r)
+          ? p.normalize(r)
+          : p.normalize(p.join(dir.path, r));
 
-      // ✅ 관리 대상(노트 폴더 내부)만 used로 인정
       if (p.isWithin(p.normalize(dir.path), abs)) {
         used.add(abs);
       }
@@ -347,18 +947,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       final dir = await _noteImageDir();
       if (!await dir.exists()) return;
 
-      final files = dir
-          .listSync()
-          .whereType<File>()
-          .toList(growable: false);
+      final files = dir.listSync().whereType<File>().toList(growable: false);
 
       for (final f in files) {
         final abs = p.normalize(f.path);
 
-        // 안전: 우리가 관리하는 파일만
         if (!await _isManagedNoteImagePath(abs)) continue;
-
-        // 참조 중이면 보존
         if (used.contains(abs)) continue;
 
         try {
@@ -375,15 +969,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (!await dir.exists()) return;
 
     try {
-      // note_{id} 폴더 자체를 날리는 것이 가장 확실/빠름
       await dir.delete(recursive: true);
     } catch (_) {
-      // 실패 시 fallback: 파일별 삭제 시도
       try {
-        final files = dir
-            .listSync()
-            .whereType<File>()
-            .toList(growable: false);
+        final files = dir.listSync().whereType<File>().toList(growable: false);
         for (final f in files) {
           final abs = p.normalize(f.path);
           if (!await _isManagedNoteImagePath(abs)) continue;
@@ -394,10 +983,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       } catch (_) {}
     }
   }
-
-  // =====================================================
-  // Helpers
-  // =====================================================
 
   String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
@@ -444,13 +1029,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return ok == true;
   }
 
-  // =====================================================
-  // Trash / Restore / Hard delete 정책
-  // - 휴지통 이동: 이미지 유지(복원 시 필요)
-  // - 복원: 그대로
-  // - 완전 삭제: 이미지 포함 전부 삭제
-  // =====================================================
-
   Future<void> _moveToTrash() async {
     final ok = await _confirmDialog(
       title: '휴지통으로 이동',
@@ -460,7 +1038,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (!ok) return;
 
     try {
-      // 혹시 남은 변경사항이 있으면 저장 시도(실패해도 이동은 진행 가능)
       await _saveIfNeeded(force: true);
 
       await _db.deleteNote(widget.noteId);
@@ -509,9 +1086,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (!ok) return;
 
     try {
-      // ✅ 완전 삭제 전 이미지 폴더 먼저 삭제
       await _deleteAllNoteImages();
-
       await _db.hardDeleteNote(widget.noteId);
 
       if (!mounted) return;
@@ -630,7 +1205,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ),
           FilledButton.icon(
@@ -657,24 +1233,21 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return parts.join(' · ');
   }
 
-  // =====================================================
-  // Quill UI
-  // =====================================================
-
   Widget _editorHeader({
     required String title,
-    required VoidCallback onInsertImage,
+    VoidCallback? onInsertImage,
   }) {
     return Row(
       children: [
         Expanded(
           child: Text(title, style: Theme.of(context).textTheme.titleMedium),
         ),
-        IconButton(
-          tooltip: '이미지 삽입',
-          onPressed: onInsertImage,
-          icon: const Icon(Icons.add_photo_alternate),
-        ),
+        if (onInsertImage != null)
+          IconButton(
+            tooltip: '이미지 삽입',
+            onPressed: onInsertImage,
+            icon: const Icon(Icons.add_photo_alternate),
+          ),
       ],
     );
   }
@@ -712,11 +1285,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
   }
 
-  // =====================================================
-  // Image insert
-  // =====================================================
-
-  Future<void> _insertImageInto(quill.QuillController controller) async {
+  Future<void> _insertImageInto({
+    required quill.QuillController controller,
+    required FocusNode focusNode,
+  }) async {
     if (!_imageInsertSupported) {
       _imageNotSupportedSnack();
       return;
@@ -725,6 +1297,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       _blockedSnack();
       return;
     }
+
+    FocusScope.of(context).requestFocus(focusNode);
 
     final source = await _pickSourceSheet();
     if (source == null) return;
@@ -742,19 +1316,24 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       targetMb: maxMb,
     );
 
-    final index = max(0, controller.selection.baseOffset);
+    final docLength = controller.document.length;
+    final baseOffset = controller.selection.baseOffset;
 
-    // ✅ embed 경로 정규화(안전)
+    final index = (baseOffset >= 0 && baseOffset <= docLength)
+        ? baseOffset
+        : max(0, docLength - 1);
+
     final embedPath = _normalizeImageRef(outFile.path);
-    final embed = quill.BlockEmbed.image(embedPath);
 
-    controller.document.insert(index, embed);
+    controller.document.insert(index, '\n');
+    controller.document.insert(index + 1, {'image': embedPath});
+    controller.document.insert(index + 2, '\n');
+
     controller.updateSelection(
-      TextSelection.collapsed(offset: index + 1),
+      TextSelection.collapsed(offset: index + 3),
       quill.ChangeSource.local,
     );
 
-    // 이미지 삽입은 내용 변경이므로 dirty + autosave 트리거
     _markDirtyAndDebounceSave(triggerRebuild: true);
   }
 
@@ -788,7 +1367,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         title: const Text('이미지 용량 제한'),
         content: TextField(
           controller: ctrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(
             labelText: '최대 MB (예: 1.0)',
           ),
@@ -827,7 +1407,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       '${_noteImagePrefix()}${DateTime.now().millisecondsSinceEpoch}.jpg',
     );
 
-    // target보다 작아도 "관리 폴더"로 재인코딩해 저장(원본 경로 불안정 방지)
     if (inputBytes.length <= targetBytes) {
       final jpg = img.encodeJpg(decoded, quality: 95);
       final f = File(outPath);
@@ -887,10 +1466,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return best;
   }
 
-  // =====================================================
-  // OCR
-  // =====================================================
-
   Future<String?> _runOcrAndReturnText() async {
     if (!_ocrSupported) {
       _ocrNotSupportedSnack();
@@ -932,7 +1507,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (text.trim().isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OCR 결과가 비어 있습니다. 더 선명한 이미지로 다시 시도해 주세요.')),
+          const SnackBar(
+            content: Text('OCR 결과가 비어 있습니다. 더 선명한 이미지로 다시 시도해 주세요.'),
+          ),
         );
       }
       return null;
@@ -959,10 +1536,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
   }
-
-  // =====================================================
-  // Items CRUD
-  // =====================================================
 
   Future<void> _addReagent() async {
     if (_noteIsDeleted) return _blockedSnack();
@@ -1075,10 +1648,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     await _loadAll();
   }
 
-  // =====================================================
-  // Build
-  // =====================================================
-
   @override
   Widget build(BuildContext context) {
     if (_noteLoading) {
@@ -1088,10 +1657,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     }
 
     return PopScope(
-      // 저장 중에는 뒤로가기 UX가 난해해져서 막는 편이 안전(원하면 true로 바꿔도 됨)
       canPop: !_saving,
       onPopInvoked: (didPop) async {
-        // PopScope는 pop 이후에도 호출될 수 있어 "최대한 저장 시도"만 한다.
         try {
           await _saveIfNeeded(force: true);
         } catch (_) {}
@@ -1159,11 +1726,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                   ),
                 ),
 
-              // ===== Note editor (Quill) =====
               _editorHeader(
                 title: '연구제목',
-                // onInsertImage: () {}, // 제목에는 이미지 삽입 비활성(원하면 연결)
-                onInsertImage: () => _insertImageInto(_bodyQuill),
+                onInsertImage: null,
               ),
               _buildQuillEditor(
                 controller: _titleQuill,
@@ -1178,7 +1743,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
               _editorHeader(
                 title: '연구내용',
-                onInsertImage: () => _insertImageInto(_bodyQuill),
+                onInsertImage: () => _insertImageInto(
+                  controller: _bodyQuill,
+                  focusNode: _bodyFocus,
+                ),
               ),
               _buildQuillEditor(
                 controller: _bodyQuill,
@@ -1192,7 +1760,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
               const SizedBox(height: 16),
               const Divider(height: 32),
 
-              // ===== Items =====
               if (_itemsLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
@@ -1282,571 +1849,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           ),
         ),
       ),
-    );
-  }
-}
-
-// =====================================================
-// ✅ 누락되면 컴파일이 안 나는 부분: _ItemEntryInput 추가
-// =====================================================
-
-class _ItemEntryInput {
-  final String name;
-  final String? catalogNumber;
-  final String? lotNumber;
-  final String? company;
-  final String? memo;
-
-  const _ItemEntryInput({
-    required this.name,
-    this.catalogNumber,
-    this.lotNumber,
-    this.company,
-    this.memo,
-  });
-}
-
-// =====================================================
-// Dialog payload types + dialogs
-// =====================================================
-
-class _ItemEntryDialog extends StatefulWidget {
-  final String title;
-  final bool enableOcr;
-  final Future<String?> Function()? onRequestOcrText;
-
-  const _ItemEntryDialog({
-    required this.title,
-    this.enableOcr = false,
-    this.onRequestOcrText,
-  });
-
-  @override
-  State<_ItemEntryDialog> createState() => _ItemEntryDialogState();
-}
-
-class _ItemEntryDialogState extends State<_ItemEntryDialog> {
-  final _name = TextEditingController();
-  final _catalog = TextEditingController();
-  final _lot = TextEditingController();
-  final _company = TextEditingController();
-  final _memo = TextEditingController();
-
-  bool _ocrRunning = false;
-
-  List<String> _nameCandidates = const [];
-  final Set<String> _selectedNames = <String>{};
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _catalog.dispose();
-    _lot.dispose();
-    _company.dispose();
-    _memo.dispose();
-    super.dispose();
-  }
-
-  String? _clean(TextEditingController c) {
-    final t = c.text.trim();
-    return t.isEmpty ? null : t;
-  }
-
-  void _submit() {
-    if (_nameCandidates.isNotEmpty) {
-      final picked = _selectedNames.toList()..sort();
-      if (picked.isEmpty) return;
-
-      final first = picked.first;
-      if (_name.text.trim().isEmpty) _name.text = first;
-
-      final extra = picked.length > 1 ? picked.skip(1).join('\n') : '';
-      if (extra.isNotEmpty && _memo.text.trim().isEmpty) {
-        _memo.text = '추가 후보:\n$extra';
-      }
-    }
-
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-
-    Navigator.pop(
-      context,
-      _ItemEntryInput(
-        name: name,
-        catalogNumber: _clean(_catalog),
-        lotNumber: _clean(_lot),
-        company: _clean(_company),
-        memo: _clean(_memo),
-      ),
-    );
-  }
-
-  List<String> _lines(String text) {
-    return text
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList(growable: false);
-  }
-
-  _ParsedItem _parseItemFromOcr(String raw) {
-    final text = raw.replaceAll('\r', '\n');
-    final lines = _lines(text);
-
-    String? cat;
-    String? lot;
-    String? company;
-    final nameCandidates = <String>{};
-    final memoLines = <String>[];
-
-    String stripPrefix(String line) {
-      final idx = line.indexOf(':');
-      if (idx >= 0 && idx + 1 < line.length) {
-        return line.substring(idx + 1).trim();
-      }
-      return line.trim();
-    }
-
-    bool looksLikeNoise(String s) {
-      if (s.length < 2) return true;
-      if (RegExp(r'^\d+$').hasMatch(s)) return true;
-      return false;
-    }
-
-    for (final line in lines) {
-      final lower = line.toLowerCase();
-
-      if (RegExp(r'\b10\.\d{4,9}/').hasMatch(line)) {
-        memoLines.add(line);
-        continue;
-      }
-
-      if (lower.startsWith('cat') || lower.startsWith('catalog')) {
-        cat ??= stripPrefix(line);
-        continue;
-      }
-      if (lower.startsWith('lot')) {
-        lot ??= stripPrefix(line);
-        continue;
-      }
-      if (lower.startsWith('company') ||
-          lower.startsWith('vendor') ||
-          lower.startsWith('supplier')) {
-        company ??= stripPrefix(line);
-        continue;
-      }
-
-      final cleaned = line.contains(':') ? stripPrefix(line) : line.trim();
-      if (!looksLikeNoise(cleaned)) {
-        nameCandidates.add(cleaned);
-      } else {
-        memoLines.add(line);
-      }
-    }
-
-    final names = nameCandidates.toList();
-    if (names.length > 30) names.removeRange(30, names.length);
-
-    return _ParsedItem(
-      catalog: cat,
-      lot: lot,
-      company: company,
-      nameCandidates: names,
-      memo: memoLines.isEmpty ? null : memoLines.join('\n'),
-    );
-  }
-
-  Future<void> _runOcrFill() async {
-    final fn = widget.onRequestOcrText;
-    if (!widget.enableOcr || fn == null) return;
-
-    setState(() => _ocrRunning = true);
-    try {
-      final raw = await fn();
-      if (!mounted || raw == null) return;
-
-      final parsed = _parseItemFromOcr(raw);
-
-      if (_catalog.text.trim().isEmpty && (parsed.catalog ?? '').trim().isNotEmpty) {
-        _catalog.text = parsed.catalog!.trim();
-      }
-      if (_lot.text.trim().isEmpty && (parsed.lot ?? '').trim().isNotEmpty) {
-        _lot.text = parsed.lot!.trim();
-      }
-      if (_company.text.trim().isEmpty && (parsed.company ?? '').trim().isNotEmpty) {
-        _company.text = parsed.company!.trim();
-      }
-      if (_memo.text.trim().isEmpty && (parsed.memo ?? '').trim().isNotEmpty) {
-        _memo.text = parsed.memo!.trim();
-      }
-
-      final candidates = parsed.nameCandidates;
-      if (candidates.isEmpty) {
-        if (_memo.text.trim().isEmpty) _memo.text = raw.trim();
-        return;
-      }
-
-      if (candidates.length == 1) {
-        if (_name.text.trim().isEmpty) _name.text = candidates.first;
-        setState(() {
-          _nameCandidates = const [];
-          _selectedNames.clear();
-        });
-        return;
-      }
-
-      setState(() {
-        _nameCandidates = candidates;
-        _selectedNames
-          ..clear()
-          ..addAll(candidates);
-      });
-    } finally {
-      if (mounted) setState(() => _ocrRunning = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        children: [
-          Expanded(child: Text(widget.title)),
-          if (widget.enableOcr)
-            TextButton.icon(
-              onPressed: _ocrRunning ? null : _runOcrFill,
-              icon: _ocrRunning
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.document_scanner_outlined, size: 18),
-              label: Text(_ocrRunning ? 'OCR중…' : 'OCR'),
-            ),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_nameCandidates.isEmpty) ...[
-              TextField(
-                controller: _name,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: '이름 *'),
-                onSubmitted: (_) => _submit(),
-              ),
-            ] else ...[
-              Row(
-                children: [
-                  const Expanded(child: Text('OCR로 여러 항목을 찾았습니다.\n추가할 항목을 선택하세요.')),
-                  TextButton(
-                    onPressed: () => setState(() => _selectedNames.addAll(_nameCandidates)),
-                    child: const Text('전체 선택'),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => _selectedNames.clear()),
-                    child: const Text('전체 해제'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _nameCandidates.length,
-                  itemBuilder: (_, i) {
-                    final name = _nameCandidates[i];
-                    final checked = _selectedNames.contains(name);
-                    return CheckboxListTile(
-                      dense: true,
-                      value: checked,
-                      title: Text(name),
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selectedNames.add(name);
-                          } else {
-                            _selectedNames.remove(name);
-                          }
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(
-                  labelText: '대표 이름(선택)',
-                  helperText: '선택 목록에서 첫 번째가 자동으로 들어갑니다. 필요하면 수정하세요.',
-                ),
-              ),
-            ],
-            TextField(
-              controller: _company,
-              decoration: const InputDecoration(labelText: '회사'),
-            ),
-            TextField(
-              controller: _catalog,
-              decoration: const InputDecoration(labelText: 'Catalog No.'),
-            ),
-            TextField(
-              controller: _lot,
-              decoration: const InputDecoration(labelText: 'Lot No.'),
-            ),
-            TextField(
-              controller: _memo,
-              decoration: const InputDecoration(labelText: '메모'),
-              minLines: 1,
-              maxLines: 4,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, null),
-          child: const Text('취소'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('추가'),
-        ),
-      ],
-    );
-  }
-}
-
-class _ParsedItem {
-  final String? catalog;
-  final String? lot;
-  final String? company;
-  final List<String> nameCandidates;
-  final String? memo;
-
-  const _ParsedItem({
-    required this.catalog,
-    required this.lot,
-    required this.company,
-    required this.nameCandidates,
-    required this.memo,
-  });
-}
-
-// =====================================================
-// DOI Dialog (OCR + 자동추출 + 다중 선택)
-// =====================================================
-
-class _DoiEntryInput {
-  final String doi;
-  final String? memo;
-
-  const _DoiEntryInput({
-    required this.doi,
-    this.memo,
-  });
-}
-
-class _DoiEntryDialog extends StatefulWidget {
-  final bool enableOcr;
-  final Future<String?> Function()? onRequestOcrText;
-
-  const _DoiEntryDialog({
-    this.enableOcr = false,
-    this.onRequestOcrText,
-  });
-
-  @override
-  State<_DoiEntryDialog> createState() => _DoiEntryDialogState();
-}
-
-class _DoiEntryDialogState extends State<_DoiEntryDialog> {
-  final _doiCtrl = TextEditingController();
-  final _memoCtrl = TextEditingController();
-
-  bool _ocrRunning = false;
-
-  List<String> _candidates = const [];
-  final Set<String> _selected = <String>{};
-
-  @override
-  void dispose() {
-    _doiCtrl.dispose();
-    _memoCtrl.dispose();
-    super.dispose();
-  }
-
-  String? _clean(TextEditingController c) {
-    final t = c.text.trim();
-    return t.isEmpty ? null : t;
-  }
-
-  static List<String> _extractDoisFromText(String text) {
-    final re = RegExp(r'\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b', caseSensitive: false);
-    final found = <String>{};
-    for (final m in re.allMatches(text)) {
-      final doi = m.group(0)?.trim();
-      if (doi != null && doi.isNotEmpty) found.add(doi);
-    }
-    final list = found.toList()..sort();
-    return list;
-  }
-
-  Future<void> _runOcrAndExtract() async {
-    final fn = widget.onRequestOcrText;
-    if (!widget.enableOcr || fn == null) return;
-
-    setState(() => _ocrRunning = true);
-    try {
-      final raw = await fn();
-      if (!mounted || raw == null) return;
-
-      final dois = _extractDoisFromText(raw);
-      if (dois.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OCR 결과에서 DOI(10.xxxx/xxxx)를 찾지 못했습니다.')),
-        );
-        return;
-      }
-
-      if (dois.length == 1) {
-        _doiCtrl.text = dois.first;
-        setState(() {
-          _candidates = const [];
-          _selected.clear();
-        });
-        return;
-      }
-
-      setState(() {
-        _candidates = dois;
-        _selected
-          ..clear()
-          ..addAll(dois);
-      });
-    } finally {
-      if (mounted) setState(() => _ocrRunning = false);
-    }
-  }
-
-  void _submit() {
-    final memo = _clean(_memoCtrl);
-
-    if (_candidates.isNotEmpty) {
-      final picked = _selected.toList()..sort();
-      if (picked.isEmpty) return;
-
-      Navigator.pop(
-        context,
-        picked.map((d) => _DoiEntryInput(doi: d, memo: memo)).toList(growable: false),
-      );
-      return;
-    }
-
-    final doi = _doiCtrl.text.trim();
-    if (doi.isEmpty) return;
-
-    Navigator.pop(context, _DoiEntryInput(doi: doi, memo: memo));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        children: [
-          const Expanded(child: Text('DOI 추가')),
-          if (widget.enableOcr)
-            TextButton.icon(
-              onPressed: _ocrRunning ? null : _runOcrAndExtract,
-              icon: _ocrRunning
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.document_scanner_outlined, size: 18),
-              label: Text(_ocrRunning ? 'OCR중…' : 'OCR'),
-            ),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_candidates.isEmpty) ...[
-              TextField(
-                controller: _doiCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'DOI * (예: 10.xxxx/xxxx)',
-                ),
-                onSubmitted: (_) => _submit(),
-              ),
-            ] else ...[
-              Row(
-                children: [
-                  const Expanded(child: Text('OCR로 여러 DOI를 찾았습니다.\n추가할 DOI를 선택하세요.')),
-                  TextButton(
-                    onPressed: () => setState(() => _selected.addAll(_candidates)),
-                    child: const Text('전체 선택'),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => _selected.clear()),
-                    child: const Text('전체 해제'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _candidates.length,
-                  itemBuilder: (_, i) {
-                    final doi = _candidates[i];
-                    final checked = _selected.contains(doi);
-                    return CheckboxListTile(
-                      dense: true,
-                      value: checked,
-                      title: Text(doi),
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selected.add(doi);
-                          } else {
-                            _selected.remove(doi);
-                          }
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            TextField(
-              controller: _memoCtrl,
-              decoration: const InputDecoration(labelText: '메모(선택)'),
-              minLines: 1,
-              maxLines: 3,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, null),
-          child: const Text('취소'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('추가'),
-        ),
-      ],
     );
   }
 }
