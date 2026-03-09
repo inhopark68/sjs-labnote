@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
-import 'package:dart_quill_delta/dart_quill_delta.dart';
 
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
@@ -19,7 +18,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../../data/app_database.dart';
-
 
 // =====================================================
 // Quill 저장/복원 유틸 (A안: Delta JSON을 DB 문자열로 저장)
@@ -42,47 +40,40 @@ String encodeDoc(quill.QuillController c) {
 }
 
 /// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
-
-  void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
-    final raw = (encodedOrText ?? '').trim();
-
-    if (raw.isEmpty) {
-      c.document = quill.Document()..insert(0, '');
-      c.updateSelection(
-        const TextSelection.collapsed(offset: 0),
-        quill.ChangeSource.local,
-      );
-      return;
-    }
-
-    // Delta JSON은 보통 "[" 로 시작하는 List 형태
-    if (raw.startsWith('[')) {
-      try {
-        final decoded = jsonDecode(raw);
-
-        if (decoded is List) {
-          // ✅ quill.Delta 타입이 안 보이는 조합에서도 동작하도록 dynamic 처리
-          final delta = Delta.fromJson(decoded);
-          final doc = quill.Document.fromDelta(delta);
-          c.document = doc;
-          c.updateSelection(
-            const TextSelection.collapsed(offset: 0),
-            quill.ChangeSource.local,
-          );
-          return;
-        }
-      } catch (_) {
-        // fallthrough -> plain text
-      }
-    }
-
-    // plain text로 처리
-    c.document = quill.Document()..insert(0, raw);
+void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
+  final raw = (encodedOrText ?? '').trim();
+  if (raw.isEmpty) {
+    c.document = quill.Document()..insert(0, '');
     c.updateSelection(
       const TextSelection.collapsed(offset: 0),
       quill.ChangeSource.local,
     );
+    return;
   }
+
+  if (raw.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final doc = quill.Document.fromJson(decoded);
+        c.document = doc;
+        c.updateSelection(
+          const TextSelection.collapsed(offset: 0),
+          quill.ChangeSource.local,
+        );
+        return;
+      }
+    } catch (_) {
+      // plain text로 fallback
+    }
+  }
+
+  c.document = quill.Document()..insert(0, raw);
+  c.updateSelection(
+    const TextSelection.collapsed(offset: 0),
+    quill.ChangeSource.local,
+  );
+}
 
 // =====================================================
 // Page
@@ -127,8 +118,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   bool _suppressEditorListener = false;
 
   // ✅ 웹에서는 image_picker / mlkit 안정성 이슈가 많아서 숨김
-  bool get _ocrSupported => true; // UI 노출은 항상 //!kIsWeb;
-  bool get _imageInsertSupported => true; // UI 노출은 항상 //!kIsWeb;
+  bool get _ocrSupported => !kIsWeb;
+  bool get _imageInsertSupported => !kIsWeb;
 
   // ===== Items =====
   List<DbNoteReagent> _reagents = const [];
@@ -209,7 +200,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     if (_suppressEditorListener) return;
     if (_noteIsDeleted) return;
 
-    //_enforceTitleOneLine(); // 원치 않으면 제거
+    _enforceTitleOneLine(); // 원치 않으면 제거
     _markDirtyAndDebounceSave(triggerRebuild: true);
   }
 
@@ -305,13 +296,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       }
     }
     return t;
-  }
-
-  Future<String> _normalizeToAbsoluteIfInsideNoteDir(String path) async {
-    // path가 상대/이상한 값이어도 "우리 노트 디렉토리 내부에 있는 절대경로"로만 비교하고 싶음
-    final dir = await _noteImageDir();
-    final abs = p.isAbsolute(path) ? path : p.normalize(p.join(dir.path, path));
-    return abs;
   }
 
   Future<bool> _isManagedNoteImagePath(String path) async {
@@ -695,9 +679,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     );
   }
 
-
-
-
   Widget _buildQuillEditor({
     required quill.QuillController controller,
     required FocusNode focusNode,
@@ -706,12 +687,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     required double minHeight,
     required bool enabled,
   }) {
-    // ✅ readOnly는 QuillEditor 파라미터가 아니라 "controller" 쪽으로 제어
-    // (11.x에서 readOnly를 controller에 두는 흐름이 흔함)
-    // 가능하면 상태가 바뀔 때만 갱신하도록 최소화
-    if (controller.readOnly != !enabled) {
-      controller.readOnly = !enabled;
-    }
+    controller.readOnly = !enabled;
 
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
@@ -720,24 +696,21 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         border: Border.all(color: Colors.black26),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: quill.QuillEditor.basic(
+      child: quill.QuillEditor(
         controller: controller,
         focusNode: focusNode,
         scrollController: scrollController,
         config: quill.QuillEditorConfig(
           placeholder: placeholder,
-          // padding/scrollable/readOnly 같은 건 여기 또는 외부 컨테이너로 처리
-          // 필요 시 더 많은 설정을 QuillEditorConfig에 추가 가능
+          expands: false,
+          padding: EdgeInsets.zero,
+          embedBuilders: kIsWeb
+              ? FlutterQuillEmbeds.editorWebBuilders()
+              : FlutterQuillEmbeds.editorBuilders(),
         ),
       ),
     );
   }
-
-
-
-
-
-
 
   // =====================================================
   // Image insert
@@ -1189,7 +1162,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
               // ===== Note editor (Quill) =====
               _editorHeader(
                 title: '연구제목',
-                onInsertImage: () => _insertImageInto(_titleQuill),
+                // onInsertImage: () {}, // 제목에는 이미지 삽입 비활성(원하면 연결)
+                onInsertImage: () => _insertImageInto(_bodyQuill),
               ),
               _buildQuillEditor(
                 controller: _titleQuill,
