@@ -213,18 +213,29 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (dialogResult.action == ScanDialogAction.addReagent) {
-        final draft = _buildReagentDraftFromDialogResult(
-          result,
-          dialogResult.combinedText,
-        );
-
-        if (!mounted) return;
-        await showDialog<void>(
+        await showDialog<ReagentDraftSubmitResult>(
           context: context,
-          builder: (_) => AddReagentDialog(
+          builder: (_) => AddReagentDraftDialog(
             initialDraft: draft,
           ),
         );
+        if (!mounted) return;
+
+        final result = await showDialog<ReagentDraftSubmitResult>(
+          context: context,
+          builder: (_) => AddReagentDraftDialog(
+            initialDraft: draft,
+          ),
+        );
+
+        if (result == null) return;
+
+        // 여기서 실제 시약 추가 처리
+        print(result.name);
+        print(result.company);
+        print(result.catalogNumber);
+        print(result.lotNumber);
+        print(result.memo);
       }
     } catch (e, st) {
       debugPrint('OCR scan failed: $e');
