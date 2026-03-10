@@ -50,9 +50,7 @@ String quillStoredTextToPlain(String? encodedOrText) {
         final doc = quill.Document.fromJson(decoded);
         return doc.toPlainText().replaceAll('\n', ' ').trim();
       }
-    } catch (_) {
-      // plain text fallback
-    }
+    } catch (_) {}
   }
 
   return raw.replaceAll('\n', ' ').trim();
@@ -985,7 +983,7 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       _lastSavedAt = DateTime.now();
 
       // 이미지 정리 검증 완료 전까지 비활성 유지
-      // await _deleteUnreferencedNoteImages();
+      await _deleteUnreferencedNoteImages();
 
       if (mounted) {
         setState(() {});

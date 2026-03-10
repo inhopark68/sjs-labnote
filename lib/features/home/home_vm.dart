@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ✅ 추가
+import 'package:provider/provider.dart';
 
 import 'package:labnote/data/app_database.dart';
 import 'package:labnote/models/note_list_item.dart';
@@ -27,6 +27,9 @@ class HomeVm extends ChangeNotifier {
 
   Timer? _searchDebounce;
 
+  /// refresh 중복 실행 / 오래된 검색 결과 반영 방지용
+  int _requestToken = 0;
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -42,30 +45,36 @@ class HomeVm extends ChangeNotifier {
   }
 
   Future<int> insertEmptyAndReturnId() async {
-    final int id = await _data.insertNote(title: '', body: '');
-    return id;
+    return _data.insertNote(title: '', body: '');
   }
 
   void toggleSearch() {
     searchVisible = !searchVisible;
+
+    if (!searchVisible && query.isNotEmpty) {
+      query = '';
+      _searchDebounce?.cancel();
+      unawaited(refresh());
+    }
+
     notifyListeners();
   }
 
   void setQuery(String v) {
+    if (query == v) return;
+
     query = v;
+    notifyListeners();
 
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      refresh();
+      unawaited(refresh());
     });
-
-    notifyListeners();
   }
 
-  // -------------------------
-  // DB pagination
-  // -------------------------
   Future<void> refresh() async {
+    final currentToken = ++_requestToken;
+
     loading = true;
     loadingMore = false;
     hasMore = true;
@@ -73,32 +82,27 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final all = await _data.debugCountAllRows();
-      final visible = await _data.debugCountVisibleRows();
-      debugPrint('DB rows(all incl deleted)=$all, visible(not deleted)=$visible');
+      _debugPrintDbState();
 
-      final sample = await _data.debugSampleRowsIncludingDeleted(limit: 5);
-      for (final r in sample) {
-        debugPrint('row id=${r.id}, deleted=${r.isDeleted}, title=${r.title}');
-      }
+      final fetched = await _fetchPage(page: 0);
 
-      final fetched = await _data.listNotes(
-        query: query.trim(),
-        limit: _pageSize + 1,
-        offset: 0,
-      );
+      if (currentToken != _requestToken) return;
 
       hasMore = fetched.length > _pageSize;
 
-      final pageNotes = fetched.take(_pageSize);
-      final pageItems = pageNotes.map(_toListItem).toList(growable: false);
+      final pageItems = fetched
+          .take(_pageSize)
+          .map(_toListItem)
+          .toList(growable: false);
 
       items
         ..clear()
         ..addAll(pageItems);
     } finally {
-      loading = false;
-      notifyListeners();
+      if (currentToken == _requestToken) {
+        loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -110,19 +114,19 @@ class HomeVm extends ChangeNotifier {
 
     try {
       final nextPage = _page + 1;
+      final fetched = await _fetchPage(page: nextPage);
 
-      final fetched = await _data.listNotes(
-        query: query.trim(),
-        limit: _pageSize + 1,
-        offset: nextPage * _pageSize,
+      final moreItems = fetched
+          .take(_pageSize)
+          .map(_toListItem)
+          .toList(growable: false);
+
+      final existingIds = items.map((e) => e.id).toSet();
+      items.addAll(
+        moreItems.where((e) => !existingIds.contains(e.id)),
       );
 
-      final moreItems =
-          fetched.take(_pageSize).map(_toListItem).toList(growable: false);
-
-      items.addAll(moreItems);
       _page = nextPage;
-
       hasMore = fetched.length > _pageSize;
     } finally {
       loadingMore = false;
@@ -130,15 +134,82 @@ class HomeVm extends ChangeNotifier {
     }
   }
 
-  // -------------------------
-  // Note -> NoteListItem
-  // -------------------------
+  Future<void> deleteNoteOptimistic(int noteId) async {
+    final index = items.indexWhere((e) => e.id == noteId);
+    if (index < 0) {
+      await _data.deleteNote(noteId);
+      await refresh();
+      return;
+    }
+
+    final removed = items.removeAt(index);
+    notifyListeners();
+
+    try {
+      await _data.deleteNote(noteId);
+
+      if (items.length < _pageSize && hasMore) {
+        final fetched = await _fetchPage(page: 0);
+        hasMore = fetched.length > _pageSize;
+
+        items
+          ..clear()
+          ..addAll(
+            fetched.take(_pageSize).map(_toListItem),
+          );
+
+        _page = 0;
+        notifyListeners();
+      }
+    } catch (e) {
+      items.insert(index, removed);
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> restoreDeletedNote(int noteId) async {
+    await _data.restoreNote(noteId);
+    await refresh();
+  }
+
+  Future<List<Note>> _fetchPage({required int page}) {
+    return _data.listNotes(
+      query: query.trim(),
+      limit: _pageSize + 1,
+      offset: page * _pageSize,
+    );
+  }
+
+  void _debugPrintDbState() {
+    assert(() {
+      () async {
+        final all = await _data.debugCountAllRows();
+        final visible = await _data.debugCountVisibleRows();
+        debugPrint(
+          'DB rows(all incl deleted)=$all, visible(not deleted)=$visible',
+        );
+
+        final sample = await _data.debugSampleRowsIncludingDeleted(limit: 5);
+        for (final r in sample) {
+          debugPrint(
+            'row id=${r.id}, deleted=${r.isDeleted}, title=${r.title}',
+          );
+        }
+      }();
+
+      return true;
+    }());
+  }
+
   String _preview(String body) {
     final s = body.replaceAll('\n', ' ').trim();
     return s.length <= 80 ? s : '${s.substring(0, 80)}…';
   }
 
   NoteListItem _toListItem(Note n) {
+    final project = n.project?.trim();
+
     return NoteListItem(
       id: n.id,
       title: n.title,
@@ -154,25 +225,23 @@ class HomeVm extends ChangeNotifier {
       hasExpiredReagent: false,
       hasExpiringSoon: false,
       tagNames: [
-        if (n.project != null && n.project!.trim().isNotEmpty) n.project!.trim(),
+        if (project != null && project.isNotEmpty) project,
       ],
     );
   }
 
-  // -------------------------
-  // Backup actions
-  // -------------------------
   Future<void> exportBackupPlain(BuildContext context) async {
     final svc = context.read<BackupService>();
     await svc.exportBackup(password: null);
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('백업 내보내기 완료')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('백업 내보내기 완료')),
+    );
   }
 
   Future<void> importBackupWithPreRestore(BuildContext context) async {
-    final svc = context.read<BackupService>(); // ✅ 수정 (BackupService.of 제거)
+    final svc = context.read<BackupService>();
 
     final raw = await svc.pickRawBackupText();
     if (raw == null) return;
@@ -225,8 +294,9 @@ class HomeVm extends ChangeNotifier {
     await refresh();
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('백업 복원 완료')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('백업 복원 완료')),
+    );
   }
 
   Future<String?> _askPassword(
@@ -236,38 +306,46 @@ class HomeVm extends ChangeNotifier {
     final ctrl = TextEditingController();
     bool obscure = true;
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: ctrl,
-            obscureText: obscure,
-            decoration: InputDecoration(
-              labelText: '비밀번호',
-              suffixIcon: IconButton(
-                tooltip: obscure ? '비밀번호 보기' : '비밀번호 숨기기',
-                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setLocal(() => obscure = !obscure),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            title: Text(title),
+            content: TextField(
+              controller: ctrl,
+              obscureText: obscure,
+              decoration: InputDecoration(
+                labelText: '비밀번호',
+                suffixIcon: IconButton(
+                  tooltip: obscure ? '비밀번호 보기' : '비밀번호 숨기기',
+                  icon: Icon(
+                    obscure ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: () => setLocal(() => obscure = !obscure),
+                ),
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('취소'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('확인'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('확인'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
 
-    if (ok != true) return null;
-    return ctrl.text.trim();
+      if (ok != true) return null;
+
+      final text = ctrl.text.trim();
+      return text.isEmpty ? null : text;
+    } finally {
+      ctrl.dispose();
+    }
   }
 }

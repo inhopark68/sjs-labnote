@@ -16,17 +16,11 @@ class NoteItemsDaoManager {
   NoteItemsDaoManager(this._db);
   $$DbNoteReagentsTableTableManager get dbNoteReagents =>
       $$DbNoteReagentsTableTableManager(
-        _db.attachedDatabase,
-        _db.dbNoteReagents,
-      );
+          _db.attachedDatabase, _db.dbNoteReagents);
   $$DbNoteMaterialsTableTableManager get dbNoteMaterials =>
       $$DbNoteMaterialsTableTableManager(
-        _db.attachedDatabase,
-        _db.dbNoteMaterials,
-      );
+          _db.attachedDatabase, _db.dbNoteMaterials);
   $$DbNoteReferencesTableTableManager get dbNoteReferences =>
       $$DbNoteReferencesTableTableManager(
-        _db.attachedDatabase,
-        _db.dbNoteReferences,
-      );
+          _db.attachedDatabase, _db.dbNoteReferences);
 }
