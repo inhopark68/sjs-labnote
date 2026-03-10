@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
 
-import 'scan_result.dart';
+import 'package:labnote/features/scan/scan_result.dart';
 
-class ScanResultDialog extends StatelessWidget {
+enum ScanDialogAction {
+  insertNote,
+  addReagent,
+}
+
+class ScanDialogResult {
+  final ScanDialogAction action;
+  final String combinedText;
+
+  const ScanDialogResult({
+    required this.action,
+    required this.combinedText,
+  });
+}
+
+class ScanResultDialog extends StatefulWidget {
   final ScanFromImageResult result;
 
   const ScanResultDialog({
@@ -10,119 +25,145 @@ class ScanResultDialog extends StatelessWidget {
     required this.result,
   });
 
-  String _buildCombinedText() {
+  @override
+  State<ScanResultDialog> createState() => _ScanResultDialogState();
+}
+
+class _ScanResultDialogState extends State<ScanResultDialog> {
+  late final TextEditingController _textCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _textCtrl = TextEditingController(
+      text: _buildInitialText(widget.result),
+    );
+  }
+
+  @override
+  void dispose() {
+    _textCtrl.dispose();
+    super.dispose();
+  }
+
+  String _buildInitialText(ScanFromImageResult result) {
     final lines = <String>[];
+    final parsed = result.parsed;
 
-    if (result.parsed.hasAny) {
-      lines.add('[Parsed]');
-      if ((result.parsed.company?.isNotEmpty ?? false)) {
-        lines.add('Company: ${result.parsed.company}');
-      }
-      if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
-        lines.add('Catalog: ${result.parsed.catalogNumber}');
-      }
-      if ((result.parsed.lotNumber?.isNotEmpty ?? false)) {
-        lines.add('Lot: ${result.parsed.lotNumber}');
-      }
-      if (result.parsed.companyCandidates.length > 1) {
-        lines.add('Company Candidates: ${result.parsed.companyCandidates.join(', ')}');
-      }
-      lines.add('');
+    final company = (parsed.company ?? '').trim();
+    final catalogNumber = (parsed.catalogNumber ?? '').trim();
+    final lotNumber = (parsed.lotNumber ?? '').trim();
+    final rawText = result.text.trim();
+
+    if (company.isNotEmpty) {
+      lines.add('회사: $company');
+    }
+    if (catalogNumber.isNotEmpty) {
+      lines.add('카탈로그 번호: $catalogNumber');
+    }
+    if (lotNumber.isNotEmpty) {
+      lines.add('Lot 번호: $lotNumber');
     }
 
-    if (result.codes.isNotEmpty) {
-      lines.add('[Codes]');
-      for (final code in result.codes) {
-        final value = (code.rawValue ?? code.displayValue ?? '').trim();
-        lines.add('${code.format}: $value');
-      }
-      lines.add('');
+    final codeValues = result.codes
+        .map((e) => (e.displayValue ?? e.rawValue ?? '').trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (codeValues.isNotEmpty) {
+      if (lines.isNotEmpty) lines.add('');
+      lines.add('[코드]');
+      lines.addAll(codeValues);
     }
 
-    if (result.text.trim().isNotEmpty) {
-      lines.add('[OCR]');
-      lines.add(result.text.trim());
+    if (rawText.isNotEmpty) {
+      if (lines.isNotEmpty) lines.add('');
+      lines.add('[원본 텍스트]');
+      lines.add(rawText);
     }
 
     return lines.join('\n').trim();
   }
 
+  void _submit(ScanDialogAction action) {
+    final text = _textCtrl.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('내용이 비어 있습니다.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(
+      ScanDialogResult(
+        action: action,
+        combinedText: text,
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final combinedText = _buildCombinedText();
+    final parsed = widget.result.parsed;
+    final hasParsedInfo =
+        (parsed.company?.trim().isNotEmpty ?? false) ||
+        (parsed.catalogNumber?.trim().isNotEmpty ?? false) ||
+        (parsed.lotNumber?.trim().isNotEmpty ?? false);
 
     return AlertDialog(
-      title: const Text('이미지 분석 결과'),
+      title: const Text('스캔 결과'),
       content: SizedBox(
-        width: 420,
+        width: 520,
         child: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (result.parsed.hasAny) ...[
-                const Text(
-                  '추출된 필드',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+              if (hasParsedInfo) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '추출 정보',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        dense: true,
-                        title: const Text('Company'),
-                        subtitle: Text(result.parsed.company ?? '(없음)'),
-                      ),
-                      ListTile(
-                        dense: true,
-                        title: const Text('Catalog Number'),
-                        subtitle: Text(result.parsed.catalogNumber ?? '(없음)'),
-                      ),
-                      ListTile(
-                        dense: true,
-                        title: const Text('Lot Number'),
-                        subtitle: Text(result.parsed.lotNumber ?? '(없음)'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
+                _buildInfoRow('회사', parsed.company ?? ''),
+                _buildInfoRow('카탈로그', parsed.catalogNumber ?? ''),
+                _buildInfoRow('Lot', parsed.lotNumber ?? ''),
+                const SizedBox(height: 12),
               ],
-              const Text(
-                'QR / Barcode',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (result.codes.isEmpty)
-                const Text('검출된 QR/바코드가 없습니다.')
-              else
-                ...result.codes.map(
-                  (c) => Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      dense: true,
-                      title: Text(
-                        (c.displayValue?.trim().isNotEmpty ?? false)
-                            ? c.displayValue!
-                            : (c.rawValue ?? '(값 없음)'),
-                      ),
-                      subtitle: Text(
-                        'format: ${c.format}\nraw: ${c.rawValue ?? ''}',
-                      ),
-                    ),
-                  ),
+              TextField(
+                controller: _textCtrl,
+                minLines: 8,
+                maxLines: 14,
+                decoration: const InputDecoration(
+                  labelText: '저장할 내용',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
                 ),
-              const SizedBox(height: 16),
-              const Text(
-                'OCR Text',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                result.text.trim().isEmpty
-                    ? '인식된 텍스트가 없습니다.'
-                    : result.text,
               ),
             ],
           ),
@@ -130,14 +171,16 @@ class ScanResultDialog extends StatelessWidget {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('닫기'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('취소'),
         ),
         TextButton(
-          onPressed: combinedText.isEmpty
-              ? null
-              : () => Navigator.pop(context, combinedText),
-          child: const Text('노트에 넣기'),
+          onPressed: () => _submit(ScanDialogAction.addReagent),
+          child: const Text('시약 추가'),
+        ),
+        FilledButton(
+          onPressed: () => _submit(ScanDialogAction.insertNote),
+          child: const Text('노트로 저장'),
         ),
       ],
     );

@@ -12,6 +12,33 @@ import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
 import 'package:labnote/services/image_scan_service.dart';
 
+import 'package:labnote/features/reagents/reagent_draft.dart';
+import 'package:labnote/features/reagents/add_reagent_draft_dialog.dart';
+
+ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
+  String name = '스캔 시약';
+
+  if ((result.parsed.company?.isNotEmpty ?? false) &&
+      (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+    name = '${result.parsed.company} ${result.parsed.catalogNumber}';
+  } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+    name = '시약 ${result.parsed.catalogNumber}';
+  } else if (result.text.trim().isNotEmpty) {
+    final firstLine = result.text.trim().split('\n').first.trim();
+    if (firstLine.isNotEmpty) {
+      name = firstLine.length > 40 ? firstLine.substring(0, 40) : firstLine;
+    }
+  }
+
+  return ReagentDraft(
+    name: name,
+    company: result.parsed.company,
+    catalogNumber: result.parsed.catalogNumber,
+    lotNumber: result.parsed.lotNumber,
+    memo: result.text.trim().isEmpty ? null : result.text.trim(),
+  );
+}
+
 String quillStoredTextToPlain(String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
   if (raw.isEmpty) return '';
@@ -47,34 +74,42 @@ class _HomeScreenState extends State<HomeScreen> {
   HomeVm? _vm;
 
   String _buildScanNoteTitle(ScanFromImageResult result) {
+    String title;
+
     if ((result.parsed.company?.isNotEmpty ?? false) &&
         (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
-      return '${result.parsed.company} ${result.parsed.catalogNumber}';
-    }
-
-    if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
-      return '시약 ${result.parsed.catalogNumber}';
-    }
-
-    if (result.codes.isNotEmpty) {
+      title = '${result.parsed.company} ${result.parsed.catalogNumber}';
+    } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+      title = '시약 ${result.parsed.catalogNumber}';
+    } else if (result.codes.isNotEmpty) {
       final first = result.codes.first;
       final value = (first.displayValue ?? first.rawValue ?? '').trim();
-      if (value.isNotEmpty) {
-        return '스캔: $value';
+      title = value.isNotEmpty ? '스캔: $value' : '스캔 가져오기';
+    } else {
+      final text = result.text.trim();
+      if (text.isNotEmpty) {
+        final firstLine = text.split('\n').first.trim();
+        title = firstLine.isNotEmpty ? firstLine : '스캔 가져오기';
+      } else {
+        title = '스캔 가져오기';
       }
     }
 
-    final text = result.text.trim();
-    if (text.isNotEmpty) {
-      final firstLine = text.split('\n').first.trim();
-      if (firstLine.isNotEmpty) {
-        return firstLine.length > 30
-            ? firstLine.substring(0, 30)
-            : firstLine;
-      }
-    }
+    return title.length > 40 ? title.substring(0, 40) : title;
+  }
 
-    return '스캔 가져오기';
+  ReagentDraft _buildReagentDraftFromDialogResult(
+    ScanFromImageResult result,
+    String combinedText,
+  ) {
+    final base = buildReagentDraftFromScan(result);
+    return ReagentDraft(
+      name: base.name,
+      company: base.company,
+      catalogNumber: base.catalogNumber,
+      lotNumber: base.lotNumber,
+      memo: combinedText.trim().isEmpty ? null : combinedText.trim(),
+    );
   }
 
   @override
@@ -93,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final vm = _vm;
     if (vm == null) return;
     if (!_scrollCtrl.hasClients) return;
+    if (vm.loadingMore || !vm.hasMore) return;
 
     final threshold = _scrollCtrl.position.maxScrollExtent - 200;
     if (_scrollCtrl.position.pixels > threshold) {
@@ -122,9 +158,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final file = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
       );
       if (file == null) return;
 
@@ -140,33 +176,56 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       messenger.clearSnackBars();
 
-      final combinedText = await showDialog<String>(
+      if (result.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('인식된 QR/OCR 정보가 없습니다.')),
+        );
+        return;
+      }
+
+      final dialogResult = await showDialog<ScanDialogResult>(
         context: context,
         builder: (_) => ScanResultDialog(result: result),
       );
 
-      if (combinedText == null || combinedText.trim().isEmpty) return;
-      if (!mounted) return;
+      if (dialogResult == null) return;
 
-      final vm = context.read<HomeVm>();
-      final title = _buildScanNoteTitle(result);
+      if (dialogResult.action == ScanDialogAction.insertNote) {
+        final vm = context.read<HomeVm>();
+        final title = _buildScanNoteTitle(result);
 
-      final noteId = await vm.createNoteFromScannedText(
-        title: title,
-        body: combinedText.trim(),
-      );
+        final noteId = await vm.createNoteFromScannedText(
+          title: title,
+          body: dialogResult.combinedText.trim(),
+        );
 
-      if (!mounted) return;
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NoteDetailPage(noteId: noteId),
+          ),
+        );
 
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => NoteDetailPage(noteId: noteId),
-        ),
-      );
+        if (!mounted) return;
+        await vm.refresh();
+        return;
+      }
 
-      if (!mounted) return;
-      await vm.refresh();
+      if (dialogResult.action == ScanDialogAction.addReagent) {
+        final draft = _buildReagentDraftFromDialogResult(
+          result,
+          dialogResult.combinedText,
+        );
+
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (_) => AddReagentDialog(
+            initialDraft: draft,
+          ),
+        );
+      }
     } catch (e, st) {
       debugPrint('OCR scan failed: $e');
       debugPrint('$st');
@@ -287,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
     HomeVm vm,
     ScaffoldMessengerState messenger,
   ) {
-    if (vm.loading) {
+    if (vm.loading && vm.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
