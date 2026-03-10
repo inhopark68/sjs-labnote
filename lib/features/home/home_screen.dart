@@ -2,11 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'package:labnote/features/home/home_vm.dart';
 import 'package:labnote/features/notes/note_detail_page.dart';
+import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
+import 'package:labnote/services/image_scan_service.dart';
 
 String quillStoredTextToPlain(String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
@@ -36,6 +39,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _scrollCtrl = ScrollController();
+  final _picker = ImagePicker();
+  final _imageScanService = ImageScanService();
+
   bool _inited = false;
   HomeVm? _vm;
 
@@ -78,6 +84,39 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Future<void> _pickImageAndScan() async {
+    try {
+      final file = await _picker.pickImage(source: ImageSource.gallery);
+      if (file == null) return;
+
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(content: Text('이미지 분석 중...')),
+        );
+
+      final result = await _imageScanService.scanImage(file.path);
+
+      if (!mounted) return;
+      messenger.clearSnackBars();
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ScanResultDialog(result: result),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('이미지 분석 실패: $e')),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<HomeVm>();
@@ -87,6 +126,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('LabNote'),
         actions: [
+          IconButton(
+            tooltip: '사진에서 QR/OCR 읽기',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: _pickImageAndScan,
+          ),
           IconButton(
             tooltip: vm.searchVisible ? '검색 닫기' : '검색',
             icon: Icon(vm.searchVisible ? Icons.close : Icons.search),

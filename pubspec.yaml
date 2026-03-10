@@ -23,11 +23,12 @@ dependencies:
 
   mobile_scanner: ^7.2.0
 
-  image_picker: ^1.0.7
+  image_picker: ^1.0.8
   flutter_quill: ^11.0.0
   flutter_quill_extensions: ^11.0.0
   flutter_image_compress: ^2.1.0
   google_mlkit_text_recognition: ^0.15.1
+  google_mlkit_barcode_scanning: ^0.14.1
 
   dart_quill_delta: ^10.8.3
   image: ^4.2.0
@@ -54,10 +55,19 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^6.0.0
   drift_dev: ^2.32.0
   build_runner: ^2.4.11
 
 flutter:
   uses-material-design: true
+
+
+
+#   A couple of notes:
+
+# I kept image_picker: ^1.0.8 since it’s the newer of the two versions you listed.
+
+# I kept google_mlkit_text_recognition: ^0.15.1 for the same reason.
+
+# google_mlkit_barcode_scanning was added into the main merged block.
