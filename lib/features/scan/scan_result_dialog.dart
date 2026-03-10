@@ -13,6 +13,23 @@ class ScanResultDialog extends StatelessWidget {
   String _buildCombinedText() {
     final lines = <String>[];
 
+    if (result.parsed.hasAny) {
+      lines.add('[Parsed]');
+      if ((result.parsed.company?.isNotEmpty ?? false)) {
+        lines.add('Company: ${result.parsed.company}');
+      }
+      if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+        lines.add('Catalog: ${result.parsed.catalogNumber}');
+      }
+      if ((result.parsed.lotNumber?.isNotEmpty ?? false)) {
+        lines.add('Lot: ${result.parsed.lotNumber}');
+      }
+      if (result.parsed.companyCandidates.length > 1) {
+        lines.add('Company Candidates: ${result.parsed.companyCandidates.join(', ')}');
+      }
+      lines.add('');
+    }
+
     if (result.codes.isNotEmpty) {
       lines.add('[Codes]');
       for (final code in result.codes) {
@@ -43,6 +60,35 @@ class ScanResultDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (result.parsed.hasAny) ...[
+                const Text(
+                  '추출된 필드',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        dense: true,
+                        title: const Text('Company'),
+                        subtitle: Text(result.parsed.company ?? '(없음)'),
+                      ),
+                      ListTile(
+                        dense: true,
+                        title: const Text('Catalog Number'),
+                        subtitle: Text(result.parsed.catalogNumber ?? '(없음)'),
+                      ),
+                      ListTile(
+                        dense: true,
+                        title: const Text('Lot Number'),
+                        subtitle: Text(result.parsed.lotNumber ?? '(없음)'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               const Text(
                 'QR / Barcode',
                 style: TextStyle(fontWeight: FontWeight.bold),

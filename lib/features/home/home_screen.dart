@@ -47,6 +47,15 @@ class _HomeScreenState extends State<HomeScreen> {
   HomeVm? _vm;
 
   String _buildScanNoteTitle(ScanFromImageResult result) {
+    if ((result.parsed.company?.isNotEmpty ?? false) &&
+        (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+      return '${result.parsed.company} ${result.parsed.catalogNumber}';
+    }
+
+    if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+      return '시약 ${result.parsed.catalogNumber}';
+    }
+
     if (result.codes.isNotEmpty) {
       final first = result.codes.first;
       final value = (first.displayValue ?? first.rawValue ?? '').trim();
@@ -109,7 +118,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickImageAndScan() async {
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery);
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
       if (file == null) return;
 
       if (!mounted) return;
@@ -134,8 +148,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       final vm = context.read<HomeVm>();
-
       final title = _buildScanNoteTitle(result);
+
       final noteId = await vm.createNoteFromScannedText(
         title: title,
         body: combinedText.trim(),
@@ -152,7 +166,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
       await vm.refresh();
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('OCR scan failed: $e');
+      debugPrint('$st');
+
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       messenger
