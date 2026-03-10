@@ -348,4 +348,15 @@ class HomeVm extends ChangeNotifier {
       ctrl.dispose();
     }
   }
+
+  Future<int> createNoteFromScannedText({
+    required String body,
+    String title = '스캔 가져오기',
+  }) async {
+    final id = await _data.insertNote(
+      title: title,
+      body: body,
+    );
+    return id;
+  }
 }

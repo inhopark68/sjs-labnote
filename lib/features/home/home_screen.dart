@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import 'package:labnote/features/home/home_vm.dart';
 import 'package:labnote/features/notes/note_detail_page.dart';
+import 'package:labnote/features/scan/scan_result.dart';
 import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
 import 'package:labnote/services/image_scan_service.dart';
@@ -44,6 +45,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _inited = false;
   HomeVm? _vm;
+
+  String _buildScanNoteTitle(ScanFromImageResult result) {
+    if (result.codes.isNotEmpty) {
+      final first = result.codes.first;
+      final value = (first.displayValue ?? first.rawValue ?? '').trim();
+      if (value.isNotEmpty) {
+        return '스캔: $value';
+      }
+    }
+
+    final text = result.text.trim();
+    if (text.isNotEmpty) {
+      final firstLine = text.split('\n').first.trim();
+      if (firstLine.isNotEmpty) {
+        return firstLine.length > 30
+            ? firstLine.substring(0, 30)
+            : firstLine;
+      }
+    }
+
+    return '스캔 가져오기';
+  }
 
   @override
   void initState() {
@@ -102,10 +125,33 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       messenger.clearSnackBars();
 
-      await showDialog<void>(
+      final combinedText = await showDialog<String>(
         context: context,
         builder: (_) => ScanResultDialog(result: result),
       );
+
+      if (combinedText == null || combinedText.trim().isEmpty) return;
+      if (!mounted) return;
+
+      final vm = context.read<HomeVm>();
+
+      final title = _buildScanNoteTitle(result);
+      final noteId = await vm.createNoteFromScannedText(
+        title: title,
+        body: combinedText.trim(),
+      );
+
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteDetailPage(noteId: noteId),
+        ),
+      );
+
+      if (!mounted) return;
+      await vm.refresh();
     } catch (e) {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
