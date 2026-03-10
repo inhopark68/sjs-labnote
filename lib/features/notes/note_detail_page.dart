@@ -20,7 +20,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import '../../data/app_database.dart';
 
 // =====================================================
-// Quill 저장/복원 유틸 (A안: Delta JSON을 DB 문자열로 저장)
+// Quill 저장/복원 유틸
 // =====================================================
 
 Set<String> extractImagePathsFromDoc(quill.QuillController c) {
@@ -53,7 +53,7 @@ String quillStoredTextToPlain(String? encodedOrText) {
         return doc.toPlainText().replaceAll('\n', ' ').trim();
       }
     } catch (_) {
-      // plain text로 fallback
+      // plain text fallback
     }
   }
 
@@ -63,6 +63,7 @@ String quillStoredTextToPlain(String? encodedOrText) {
 /// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
 void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
+
   if (raw.isEmpty) {
     c.document = quill.Document()..insert(0, '');
     c.updateSelection(
@@ -85,7 +86,7 @@ void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
         return;
       }
     } catch (_) {
-      // plain text로 fallback
+      // plain text fallback
     }
   }
 
@@ -635,8 +636,7 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
                     child: Text('OCR로 여러 DOI를 찾았습니다.\n추가할 DOI를 선택하세요.'),
                   ),
                   TextButton(
-                    onPressed: () =>
-                        setState(() => _selected.addAll(_candidates)),
+                    onPressed: () => setState(() => _selected.addAll(_candidates)),
                     child: const Text('전체 선택'),
                   ),
                   TextButton(
@@ -702,7 +702,11 @@ class _DoiEntryDialogState extends State<_DoiEntryDialog> {
 
 class NoteDetailPage extends StatefulWidget {
   final int noteId;
-  const NoteDetailPage({super.key, required this.noteId});
+
+  const NoteDetailPage({
+    super.key,
+    required this.noteId,
+  });
 
   @override
   State<NoteDetailPage> createState() => _NoteDetailPageState();
@@ -723,16 +727,18 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   final ImagePicker _picker = ImagePicker();
 
   Timer? _debounce;
+
   bool _noteLoading = true;
   bool _itemsLoading = true;
-
   bool _saving = false;
   bool _dirty = false;
+  bool _noteIsDeleted = false;
+  bool _suppressEditorListener = false;
+  bool _cleanupRunning = false;
+
+  DateTime? _lastSavedAt;
 
   Note? _note;
-  bool _noteIsDeleted = false;
-
-  bool _suppressEditorListener = false;
 
   bool get _ocrSupported => !kIsWeb;
   bool get _imageInsertSupported => !kIsWeb;
@@ -740,8 +746,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   List<DbNoteReagent> _reagents = const [];
   List<DbNoteMaterial> _materials = const [];
   List<DbNoteReference> _references = const [];
-
-  bool _cleanupRunning = false;
 
   @override
   void initState() {
@@ -765,6 +769,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
     _titleFocus.dispose();
     _bodyFocus.dispose();
+
     _titleScroll.dispose();
     _bodyScroll.dispose();
 
@@ -810,16 +815,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Future<void> _refresh() => _loadAll();
 
   void _onTitleChanged() {
-    if (_suppressEditorListener) return;
-    if (_noteIsDeleted) return;
+    if (_suppressEditorListener || _noteIsDeleted) return;
 
     _enforceTitleOneLine();
     _markDirtyAndDebounceSave(triggerRebuild: true);
   }
 
   void _onBodyChanged() {
-    if (_suppressEditorListener) return;
-    if (_noteIsDeleted) return;
+    if (_suppressEditorListener || _noteIsDeleted) return;
 
     _markDirtyAndDebounceSave(triggerRebuild: false);
   }
@@ -839,8 +842,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   Future<void> _saveIfNeeded({bool force = false}) async {
     if (_noteIsDeleted) return;
-    if (!force && (!_dirty || _saving)) return;
     if (_saving) return;
+    if (!force && !_dirty) return;
 
     final titleJson = encodeDoc(_titleQuill);
     final bodyJson = encodeDoc(_bodyQuill);
@@ -852,19 +855,24 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         title: titleJson,
         body: bodyJson,
       );
+
       _dirty = false;
+      _lastSavedAt = DateTime.now();
 
       await _deleteUnreferencedNoteImages();
 
-      if (mounted) setState(() {});
-    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장 실패: $e')),
-        );
+        setState(() {});
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('저장 실패: $e')),
+      );
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -884,6 +892,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       await dir.create(recursive: true);
     }
     return dir;
+  }
+
+  String _formatSavedTime(DateTime dt) {
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
   }
 
   String _noteImagePrefix() => 'img_';
@@ -1039,8 +1053,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
     try {
       await _saveIfNeeded(force: true);
-
       await _db.deleteNote(widget.noteId);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('휴지통으로 이동했습니다.')),
@@ -1064,6 +1078,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
     try {
       await _db.restoreNote(widget.noteId);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('노트를 복원했습니다.')),
@@ -1080,7 +1095,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Future<void> _confirmHardDelete() async {
     final ok = await _confirmDialog(
       title: '완전 삭제',
-      message: '이 노트를 완전히 삭제할까요?\n노트에 연결된 시약/재료/DOI 기록도 함께 삭제되며, 복구할 수 없습니다.',
+      message:
+          '이 노트를 완전히 삭제할까요?\n노트에 연결된 시약/재료/DOI 기록도 함께 삭제되며, 복구할 수 없습니다.',
       okText: '완전 삭제',
     );
     if (!ok) return;
@@ -1152,7 +1168,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       );
     }
 
-    if (_noteIsDeleted) return const SizedBox.shrink();
+    if (_noteIsDeleted) {
+      return const SizedBox.shrink();
+    }
 
     if (_dirty) {
       return Padding(
@@ -1175,6 +1193,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       );
     }
 
+    final savedLabel = _lastSavedAt == null
+        ? '저장됨'
+        : '${_formatSavedTime(_lastSavedAt!)} 저장됨';
+
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Chip(
@@ -1182,12 +1204,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         labelPadding: const EdgeInsets.symmetric(horizontal: 6),
         backgroundColor: theme.colorScheme.surfaceContainerHighest,
         side: BorderSide(color: theme.dividerColor.withOpacity(0.6)),
-        label: const Row(
+        label: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, size: 16),
-            SizedBox(width: 6),
-            Text('저장됨'),
+            const Icon(Icons.check_circle, size: 16),
+            const SizedBox(width: 6),
+            Text(savedLabel),
           ],
         ),
       ),
@@ -1205,8 +1227,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           Expanded(
             child: Text(
               title,
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           FilledButton.icon(
@@ -1226,10 +1250,20 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     String? memo,
   }) {
     final parts = <String>[];
-    if (company != null && company.trim().isNotEmpty) parts.add(company.trim());
-    if (cat != null && cat.trim().isNotEmpty) parts.add('Cat: ${cat.trim()}');
-    if (lot != null && lot.trim().isNotEmpty) parts.add('Lot: ${lot.trim()}');
-    if (memo != null && memo.trim().isNotEmpty) parts.add(memo.trim());
+
+    if (company != null && company.trim().isNotEmpty) {
+      parts.add(company.trim());
+    }
+    if (cat != null && cat.trim().isNotEmpty) {
+      parts.add('Cat: ${cat.trim()}');
+    }
+    if (lot != null && lot.trim().isNotEmpty) {
+      parts.add('Lot: ${lot.trim()}');
+    }
+    if (memo != null && memo.trim().isNotEmpty) {
+      parts.add(memo.trim());
+    }
+
     return parts.join(' · ');
   }
 
@@ -1240,7 +1274,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     return Row(
       children: [
         Expanded(
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         if (onInsertImage != null)
           IconButton(
@@ -1361,14 +1398,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   Future<double?> _askMaxSizeMb() async {
     final ctrl = TextEditingController(text: '1.0');
+
     return showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('이미지 용량 제한'),
         content: TextField(
           controller: ctrl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(
             labelText: '최대 MB (예: 1.0)',
           ),
@@ -1429,7 +1466,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
       if (w <= 320 || h <= 320) break;
 
-      final scale = 0.88;
+      const scale = 0.88;
       final newW = max(320, (w * scale).round());
       final newH = max(320, (h * scale).round());
 
@@ -1463,6 +1500,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         hi = mid - 1;
       }
     }
+
     return best;
   }
 
@@ -1538,7 +1576,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Future<void> _addReagent() async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
 
     final input = await showDialog<_ItemEntryInput?>(
       context: context,
@@ -1565,7 +1606,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Future<void> _addMaterial() async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
 
     final input = await showDialog<_ItemEntryInput?>(
       context: context,
@@ -1592,7 +1636,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Future<void> _addReference() async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
 
     final result = await showDialog<dynamic>(
       context: context,
@@ -1626,24 +1673,32 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         );
       }
       await _loadAll();
-      return;
     }
   }
 
   Future<void> _deleteReagent(String id) async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
     await _db.noteItemsDao.deleteReagent(id);
     await _loadAll();
   }
 
   Future<void> _deleteMaterial(String id) async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
     await _db.noteItemsDao.deleteMaterial(id);
     await _loadAll();
   }
 
   Future<void> _deleteReference(String id) async {
-    if (_noteIsDeleted) return _blockedSnack();
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
     await _db.noteItemsDao.deleteReference(id);
     await _loadAll();
   }
@@ -1656,9 +1711,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       );
     }
 
-    return PopScope(
+    return PopScope<bool>(
       canPop: !_saving,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
         try {
           await _saveIfNeeded(force: true);
         } catch (_) {}
@@ -1778,12 +1834,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                       child: ListTile(
                         dense: true,
                         title: Text(r.name),
-                        subtitle: Text(_subtitleParts(
-                          company: r.company,
-                          cat: r.catalogNumber,
-                          lot: r.lotNumber,
-                          memo: r.memo,
-                        )),
+                        subtitle: Text(
+                          _subtitleParts(
+                            company: r.company,
+                            cat: r.catalogNumber,
+                            lot: r.lotNumber,
+                            memo: r.memo,
+                          ),
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: _noteIsDeleted
@@ -1806,12 +1864,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                       child: ListTile(
                         dense: true,
                         title: Text(m.name),
-                        subtitle: Text(_subtitleParts(
-                          company: m.company,
-                          cat: m.catalogNumber,
-                          lot: m.lotNumber,
-                          memo: m.memo,
-                        )),
+                        subtitle: Text(
+                          _subtitleParts(
+                            company: m.company,
+                            cat: m.catalogNumber,
+                            lot: m.lotNumber,
+                            memo: m.memo,
+                          ),
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: _noteIsDeleted
