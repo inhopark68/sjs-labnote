@@ -799,6 +799,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       decodeDocOrPlainText(_titleQuill, noteAny?.title);
       decodeDocOrPlainText(_bodyQuill, noteAny?.body);
       _dirty = false;
+      _lastSavedAt = null;
     } finally {
       _suppressEditorListener = false;
     }
@@ -865,9 +866,19 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         setState(() {});
       }
     } catch (e) {
+      _dirty = true;
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('저장 실패: $e')),
+        SnackBar(
+          content: Text('저장 실패: $e'),
+          action: SnackBarAction(
+            label: '재시도',
+            onPressed: () {
+              _saveIfNeeded(force: true);
+            },
+          ),
+        ),
       );
     } finally {
       if (mounted) {
