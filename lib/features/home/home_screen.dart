@@ -118,6 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickImageAndScan() async {
     try {
+      final messenger = ScaffoldMessenger.of(context);
+
       final file = await _picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 1600,
@@ -127,7 +129,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (file == null) return;
 
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
       messenger
         ..clearSnackBars()
         ..showSnackBar(

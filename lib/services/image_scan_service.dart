@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
@@ -30,15 +31,17 @@ class ImageScanService {
               ),
             )
             .toList(growable: false);
-      } catch (_) {
-        codes = const [];
+      } catch (e, st) {
+        debugPrint('barcode scan failed: $e');
+        debugPrint('$st');
       }
 
       try {
         final recognizedText = await textRecognizer.processImage(inputImage);
         text = recognizedText.text;
-      } catch (_) {
-        text = '';
+      } catch (e, st) {
+        debugPrint('text scan failed: $e');
+        debugPrint('$st');
       }
 
       final parsedInfo = _parser.parse(text);
