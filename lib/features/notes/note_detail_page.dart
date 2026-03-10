@@ -39,8 +39,6 @@ String encodeDoc(quill.QuillController c) {
   return jsonEncode(json);
 }
 
-/// DB에 저장된 Quill Delta JSON 문자열을 사용자에게 보여줄 plain text로 변환
-/// 예: `[{"insert":"제목"}]` -> `제목`
 String quillStoredTextToPlain(String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
   if (raw.isEmpty) return '';
@@ -60,7 +58,6 @@ String quillStoredTextToPlain(String? encodedOrText) {
   return raw.replaceAll('\n', ' ').trim();
 }
 
-/// encodedOrText가 Delta JSON(List)면 복원, 아니면 plain text로 문서 생성
 void decodeDocOrPlainText(quill.QuillController c, String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
 
@@ -712,7 +709,49 @@ class NoteDetailPage extends StatefulWidget {
   State<NoteDetailPage> createState() => _NoteDetailPageState();
 }
 
-class _NoteDetailPageState extends State<NoteDetailPage> {
+class _SelectableImageEmbedBuilder implements quill.EmbedBuilder {
+  final quill.EmbedBuilder baseBuilder;
+  final Future<void> Function(String imagePath) onTapImage;
+
+  const _SelectableImageEmbedBuilder({
+    required this.baseBuilder,
+    required this.onTapImage,
+  });
+
+  @override
+  String get key => 'image';
+
+  @override
+  bool get expanded => baseBuilder.expanded;
+
+  @override
+  String toPlainText(quill.Embed node) => baseBuilder.toPlainText(node);
+
+  @override
+  WidgetSpan buildWidgetSpan(Widget widget) {
+    return baseBuilder.buildWidgetSpan(widget);
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+    quill.EmbedContext embedContext,
+  ) {
+    final node = embedContext.node;
+    final imagePath = node.value.data.toString();
+
+    final child = baseBuilder.build(context, embedContext);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onTapImage(imagePath),
+      child: child,
+    );
+  }
+}
+
+class _NoteDetailPageState extends State<NoteDetailPage>
+    with WidgetsBindingObserver {
   AppDatabase get _db => context.read<AppDatabase>();
 
   final quill.QuillController _titleQuill = quill.QuillController.basic();
@@ -746,10 +785,79 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   List<DbNoteReagent> _reagents = const [];
   List<DbNoteMaterial> _materials = const [];
   List<DbNoteReference> _references = const [];
+  List<quill.EmbedBuilder> _buildEmbedBuilders(
+    quill.QuillController controller,
+  ) {
+    final baseBuilders = kIsWeb
+        ? FlutterQuillEmbeds.editorWebBuilders()
+        : FlutterQuillEmbeds.editorBuilders();
+
+    return baseBuilders.map<quill.EmbedBuilder>((builder) {
+      if (builder.key == 'image') {
+        return _SelectableImageEmbedBuilder(
+          baseBuilder: builder,
+          onTapImage: (imagePath) async {
+            await _confirmDeleteImage(
+              controller: controller,
+              imagePath: imagePath,
+            );
+          },
+        );
+      }
+      return builder;
+    }).toList();
+  }
+
+  int? _findImageEmbedOffsetByPath(
+    quill.QuillController controller,
+    String imagePath,
+  ) {
+    final target = _normalizeImageRef(imagePath);
+    final delta = controller.document.toDelta().toList();
+
+    int offset = 0;
+
+    for (final op in delta) {
+      final data = op.data;
+
+      if (data is String) {
+        offset += data.length;
+        continue;
+      }
+
+      if (data is Map && data['image'] is String) {
+        final current = _normalizeImageRef(data['image'] as String);
+        if (current == target) {
+          return offset;
+        }
+        offset += 1;
+        continue;
+      }
+
+      offset += 1;
+    }
+
+    return null;
+  }
+
+
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _saveIfNeeded(force: true);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
 
     _titleQuill.addListener(_onTitleChanged);
     _bodyQuill.addListener(_onBodyChanged);
@@ -759,6 +867,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
 
     _titleQuill.removeListener(_onTitleChanged);
@@ -825,6 +934,21 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   void _onBodyChanged() {
     if (_suppressEditorListener || _noteIsDeleted) return;
 
+    final refs = extractImagePathsFromDoc(_bodyQuill)
+        .map(_normalizeImageRef)
+        .toSet();
+
+    if (_selectedBodyImagePath != null &&
+        !refs.contains(_normalizeImageRef(_selectedBodyImagePath!))) {
+      if (mounted) {
+        setState(() {
+          _selectedBodyImagePath = null;
+        });
+      } else {
+        _selectedBodyImagePath = null;
+      }
+    }
+
     _markDirtyAndDebounceSave(triggerRebuild: false);
   }
 
@@ -860,7 +984,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       _dirty = false;
       _lastSavedAt = DateTime.now();
 
-      await _deleteUnreferencedNoteImages();
+      // 이미지 정리 검증 완료 전까지 비활성 유지
+      // await _deleteUnreferencedNoteImages();
 
       if (mounted) {
         setState(() {});
@@ -912,6 +1037,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   String _noteImagePrefix() => 'img_';
+
+  String? _selectedBodyImagePath;
 
   String _normalizeImageRef(String s) {
     final t = s.trim();
@@ -1281,6 +1408,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Widget _editorHeader({
     required String title,
     VoidCallback? onInsertImage,
+    VoidCallback? onDeleteImage,
   }) {
     return Row(
       children: [
@@ -1290,6 +1418,12 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
+        if (onDeleteImage != null)
+          IconButton(
+            tooltip: '선택 이미지 삭제',
+            onPressed: onDeleteImage,
+            icon: const Icon(Icons.delete_outline),
+          ),
         if (onInsertImage != null)
           IconButton(
             tooltip: '이미지 삽입',
@@ -1299,7 +1433,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       ],
     );
   }
-
+     
   Widget _buildQuillEditor({
     required quill.QuillController controller,
     required FocusNode focusNode,
@@ -1325,9 +1459,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           placeholder: placeholder,
           expands: false,
           padding: EdgeInsets.zero,
-          embedBuilders: kIsWeb
-              ? FlutterQuillEmbeds.editorWebBuilders()
-              : FlutterQuillEmbeds.editorBuilders(),
+          embedBuilders: _buildEmbedBuilders(controller),
         ),
       ),
     );
@@ -1347,6 +1479,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     }
 
     FocusScope.of(context).requestFocus(focusNode);
+    await Future.delayed(const Duration(milliseconds: 10));
 
     final source = await _pickSourceSheet();
     if (source == null) return;
@@ -1364,25 +1497,162 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       targetMb: maxMb,
     );
 
+    final embedPath = _normalizeImageRef(outFile.path);
+    final embed = quill.BlockEmbed.image(embedPath);
+
     final docLength = controller.document.length;
     final baseOffset = controller.selection.baseOffset;
 
-    final index = (baseOffset >= 0 && baseOffset <= docLength)
+    final index = (baseOffset >= 0 && baseOffset < docLength)
         ? baseOffset
         : max(0, docLength - 1);
 
-    final embedPath = _normalizeImageRef(outFile.path);
+    controller.replaceText(
+      index,
+      0,
+      embed,
+      TextSelection.collapsed(offset: index + 1),
+    );
 
-    controller.document.insert(index, '\n');
-    controller.document.insert(index + 1, {'image': embedPath});
-    controller.document.insert(index + 2, '\n');
+    if (controller == _bodyQuill) {
+      setState(() {
+        _selectedBodyImagePath = embedPath;
+      });
+    }
 
-    controller.updateSelection(
-      TextSelection.collapsed(offset: index + 3),
-      quill.ChangeSource.local,
+    _markDirtyAndDebounceSave(triggerRebuild: true);
+    debugPrint('--- after image insert ---');
+    debugPrint(jsonEncode(controller.document.toDelta().toJson()));
+  }
+
+
+
+  Future<void> _deleteSelectedBodyImage() async {
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
+
+    final selectedPath = _selectedBodyImagePath;
+    if (selectedPath == null || selectedPath.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('먼저 삭제할 이미지를 선택해 주세요.')),
+      );
+      return;
+    }
+
+    final imageOffset = _findImageEmbedOffsetByPath(_bodyQuill, selectedPath);
+    if (imageOffset == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('선택한 이미지를 문서에서 찾지 못했습니다.')),
+      );
+      setState(() => _selectedBodyImagePath = null);
+      return;
+    }
+
+    _bodyQuill.replaceText(
+      imageOffset,
+      1,
+      '',
+      TextSelection.collapsed(offset: max(0, imageOffset)),
+    );
+
+    setState(() => _selectedBodyImagePath = null);
+
+    _markDirtyAndDebounceSave(triggerRebuild: true);
+  }
+
+  Future<void> _deleteImageByPath({
+    required quill.QuillController controller,
+    required String imagePath,
+  }) async {
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
+
+    final delta = controller.document.toDelta().toList();
+
+    int offset = 0;
+    int? targetOffset;
+
+    for (final op in delta) {
+      final data = op.data;
+
+      if (data is String) {
+        offset += data.length;
+        continue;
+      }
+
+      if (data is Map && data['image'] is String) {
+        final currentPath = _normalizeImageRef(data['image'] as String);
+        final targetPath = _normalizeImageRef(imagePath);
+
+        if (currentPath == targetPath) {
+          targetOffset = offset;
+          break;
+        }
+
+        offset += 1;
+        continue;
+      }
+
+      offset += 1;
+    }
+
+    if (targetOffset == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제할 이미지를 찾지 못했습니다.')),
+      );
+      return;
+    }
+
+    controller.replaceText(
+      targetOffset,
+      1,
+      '',
+      TextSelection.collapsed(offset: max(0, targetOffset - 1)),
     );
 
     _markDirtyAndDebounceSave(triggerRebuild: true);
+  }
+
+  Future<void> _confirmDeleteImage({
+    required quill.QuillController controller,
+    required String imagePath,
+  }) async {
+    if (_noteIsDeleted) {
+      _blockedSnack();
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이미지 삭제'),
+        content: const Text('이 이미지만 삭제할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      await _deleteImageByPath(
+        controller: controller,
+        imagePath: imagePath,
+      );
+    }
   }
 
   Future<ImageSource?> _pickSourceSheet() {
@@ -1792,10 +2062,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                     ),
                   ),
                 ),
-
               _editorHeader(
                 title: '연구제목',
-                onInsertImage: null,
               ),
               _buildQuillEditor(
                 controller: _titleQuill,
@@ -1805,16 +2073,17 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                 minHeight: 70,
                 enabled: !_noteIsDeleted,
               ),
-
+            
               const SizedBox(height: 12),
-
               _editorHeader(
                 title: '연구내용',
+                onDeleteImage: _deleteSelectedBodyImage,
                 onInsertImage: () => _insertImageInto(
                   controller: _bodyQuill,
                   focusNode: _bodyFocus,
                 ),
               ),
+
               _buildQuillEditor(
                 controller: _bodyQuill,
                 focusNode: _bodyFocus,
@@ -1823,10 +2092,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                 minHeight: 260,
                 enabled: !_noteIsDeleted,
               ),
-
               const SizedBox(height: 16),
               const Divider(height: 32),
-
               if (_itemsLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
@@ -1862,7 +2129,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                       ),
                     ),
                   ),
-
                 _sectionHeader(title: '재료 기록', onAdd: _addMaterial),
                 if (_materials.isEmpty)
                   const Padding(
@@ -1892,7 +2158,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                       ),
                     ),
                   ),
-
                 _sectionHeader(title: 'References (DOI)', onAdd: _addReference),
                 if (_references.isEmpty)
                   const Padding(

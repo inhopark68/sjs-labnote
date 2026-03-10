@@ -9,6 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
 
   cupertino_icons: ^1.0.8
   provider: ^6.0.0
@@ -26,9 +29,7 @@ dependencies:
   flutter_image_compress: ^2.1.0
   google_mlkit_text_recognition: ^0.15.1
 
-  # ✅ Dart 3 호환 Delta
   dart_quill_delta: ^10.8.3
-
   image: ^4.2.0
 
   archive: ^4.0.9
