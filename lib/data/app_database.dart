@@ -17,6 +17,32 @@ abstract class NotesRepository {
     int? offset,
   });
 
+  Future<List<Note>> listNotesFirstPage({
+    required String query,
+    required int limit,
+  });
+
+  Future<List<Note>> listNotesAfterCursor({
+    required String query,
+    required int limit,
+    required DateTime lastUpdatedAt,
+    required int lastId,
+    required bool lastIsPinned,
+  });
+
+  Future<List<NoteListRow>> listNoteRowsFirstPage({
+    required String query,
+    required int limit,
+  });
+
+  Future<List<NoteListRow>> listNoteRowsAfterCursor({
+    required String query,
+    required int limit,
+    required DateTime lastUpdatedAt,
+    required int lastId,
+    required bool lastIsPinned,
+  });
+
   Future<Note?> getNote(int id);
 
   Future<int> insertNote({
@@ -31,7 +57,7 @@ abstract class NotesRepository {
     required String body,
   });
 
-  Future<void> deleteNote(int id); // soft delete
+  Future<void> deleteNote(int id);
   Future<void> restoreNote(int id);
   Future<void> togglePin(int id);
 
@@ -49,8 +75,6 @@ class Note {
   final bool isDeleted;
   final String? project;
   final DateTime? noteDate;
-
-  /// 구버전 String id 보관
   final String? legacyId;
 
   Note({
@@ -68,6 +92,28 @@ class Note {
   });
 }
 
+class NoteListRow {
+  final int id;
+  final String title;
+  final String preview;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isPinned;
+  final bool isLocked;
+  final String? project;
+
+  NoteListRow({
+    required this.id,
+    required this.title,
+    required this.preview,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.isPinned,
+    required this.isLocked,
+    required this.project,
+  });
+}
+
 // =====================================================
 // Drift Tables
 // =====================================================
@@ -75,7 +121,6 @@ class Note {
 class DbNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  /// 구버전 text id 저장
   TextColumn get legacyId => text().nullable()();
 
   DateTimeColumn get noteDate => dateTime().nullable()();
@@ -162,19 +207,24 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          await _createIndexes();
         },
         onUpgrade: (m, from, to) async {
           await customStatement('PRAGMA foreign_keys = OFF;');
           try {
             if (from < 4) {
               await _migrateV3TextIdToV4IntId(m);
+            } else {
+              await _createMissingTablesIfNeeded(m);
             }
+            await _createIndexes();
           } finally {
             await customStatement('PRAGMA foreign_keys = ON;');
           }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON;');
+          await _createIndexes();
         },
       );
 
@@ -188,6 +238,247 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
             )
           : null,
     );
+  }
+
+  Future<void> _createIndexes() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_db_notes_list_order
+      ON db_notes (is_deleted, is_pinned DESC, updated_at DESC, id DESC)
+    ''');
+  }
+
+  // =====================================================
+  // Cursor helpers
+  // =====================================================
+
+  Expression<bool> _buildSearchFilter($DbNotesTable tbl, String query) {
+    final q = query.trim();
+    if (q.isEmpty) {
+      return const Constant(true);
+    }
+
+    final pattern = '%$q%';
+    return tbl.title.like(pattern) |
+        tbl.body.like(pattern) |
+        tbl.project.like(pattern);
+  }
+
+  Expression<bool> _buildCursorFilter(
+    $DbNotesTable tbl, {
+    required DateTime lastUpdatedAt,
+    required int lastId,
+    required bool lastIsPinned,
+  }) {
+    final samePinned = tbl.isPinned.equals(lastIsPinned);
+
+    final movedFromPinnedTrueToFalse =
+        lastIsPinned ? tbl.isPinned.equals(false) : const Constant(false);
+
+    final olderUpdatedInSamePinned =
+        samePinned & tbl.updatedAt.isSmallerThanValue(lastUpdatedAt);
+
+    final olderIdInSamePinnedAndSameUpdated =
+        samePinned &
+        tbl.updatedAt.equals(lastUpdatedAt) &
+        tbl.id.isSmallerThanValue(lastId);
+
+    return movedFromPinnedTrueToFalse |
+        olderUpdatedInSamePinned |
+        olderIdInSamePinnedAndSameUpdated;
+  }
+  String _escapeLike(String input) {
+    return input
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+  }
+
+  NoteListRow _mapNoteListRow(QueryRow row) {
+    return NoteListRow(
+      id: row.read<int>('id'),
+      title: row.read<String>('title'),
+      preview: row.read<String>('preview'),
+      createdAt: row.read<DateTime>('created_at'),
+      updatedAt: row.read<DateTime>('updated_at'),
+      isPinned: row.read<bool>('is_pinned'),
+      isLocked: row.read<bool>('is_locked'),
+      project: row.readNullable<String>('project'),
+    );
+  }
+
+  // =====================================================
+  // Cursor pagination
+  // =====================================================
+
+  @override
+  Future<List<Note>> listNotesFirstPage({
+    required String query,
+    required int limit,
+  }) async {
+    final stmt = select(dbNotes)
+      ..where((t) => t.isDeleted.equals(false))
+      ..where((t) => _buildSearchFilter(t, query))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.isPinned, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
+      ])
+      ..limit(limit);
+
+    final rows = await stmt.get();
+    return rows.map(_toDomain).toList(growable: false);
+  }
+
+  @override
+  Future<List<Note>> listNotesAfterCursor({
+    required String query,
+    required int limit,
+    required DateTime lastUpdatedAt,
+    required int lastId,
+    required bool lastIsPinned,
+  }) async {
+    final stmt = select(dbNotes)
+      ..where((t) => t.isDeleted.equals(false))
+      ..where((t) => _buildSearchFilter(t, query))
+      ..where(
+        (t) => _buildCursorFilter(
+          t,
+          lastUpdatedAt: lastUpdatedAt,
+          lastId: lastId,
+          lastIsPinned: lastIsPinned,
+        ),
+      )
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.isPinned, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
+      ])
+      ..limit(limit);
+
+    final rows = await stmt.get();
+    return rows.map(_toDomain).toList(growable: false);
+  }
+
+  // =====================================================
+  // List rows for home list
+  // =====================================================
+
+  @override
+  Future<List<NoteListRow>> listNoteRowsFirstPage({
+    required String query,
+    required int limit,
+  }) async {
+    final q = query.trim();
+    final escaped = _escapeLike(q);
+    final pattern = '%$escaped%';
+
+    final rows = await customSelect(
+      '''
+      SELECT
+        id,
+        title,
+        CASE
+          WHEN length(trim(replace(body, char(10), ' '))) <= 80
+            THEN trim(replace(body, char(10), ' '))
+          ELSE substr(trim(replace(body, char(10), ' ')), 1, 80) || '…'
+        END AS preview,
+        created_at,
+        updated_at,
+        is_pinned,
+        is_locked,
+        project
+      FROM db_notes
+      WHERE is_deleted = 0
+        AND (
+          ? = ''
+          OR title LIKE ? ESCAPE '\\'
+          OR body LIKE ? ESCAPE '\\'
+          OR project LIKE ? ESCAPE '\\'
+        )
+      ORDER BY is_pinned DESC, updated_at DESC, id DESC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(q),
+        Variable.withString(pattern),
+        Variable.withString(pattern),
+        Variable.withString(pattern),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {dbNotes},
+    ).get();
+
+    return rows.map(_mapNoteListRow).toList(growable: false);
+  }
+
+  @override
+  Future<List<NoteListRow>> listNoteRowsAfterCursor({
+    required String query,
+    required int limit,
+    required DateTime lastUpdatedAt,
+    required int lastId,
+    required bool lastIsPinned,
+  }) async {
+    final q = query.trim();
+    final escaped = _escapeLike(q);
+    final pattern = '%$escaped%';
+    final pinnedInt = lastIsPinned ? 1 : 0;
+
+    final rows = await customSelect(
+      '''
+      SELECT
+        id,
+        title,
+        CASE
+          WHEN length(trim(replace(body, char(10), ' '))) <= 80
+            THEN trim(replace(body, char(10), ' '))
+          ELSE substr(trim(replace(body, char(10), ' ')), 1, 80) || '…'
+        END AS preview,
+        created_at,
+        updated_at,
+        is_pinned,
+        is_locked,
+        project
+      FROM db_notes
+      WHERE is_deleted = 0
+        AND (
+          ? = ''
+          OR title LIKE ? ESCAPE '\\'
+          OR body LIKE ? ESCAPE '\\'
+          OR project LIKE ? ESCAPE '\\'
+        )
+        AND (
+          (is_pinned < ?)
+          OR (
+            is_pinned = ?
+            AND updated_at < ?
+          )
+          OR (
+            is_pinned = ?
+            AND updated_at = ?
+            AND id < ?
+          )
+        )
+      ORDER BY is_pinned DESC, updated_at DESC, id DESC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(q),
+        Variable.withString(pattern),
+        Variable.withString(pattern),
+        Variable.withString(pattern),
+        Variable.withInt(pinnedInt),
+        Variable.withInt(pinnedInt),
+        Variable.withDateTime(lastUpdatedAt),
+        Variable.withInt(pinnedInt),
+        Variable.withDateTime(lastUpdatedAt),
+        Variable.withInt(lastId),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {dbNotes},
+    ).get();
+
+    return rows.map(_mapNoteListRow).toList(growable: false);
   }
 
   // =====================================================
@@ -459,7 +750,7 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   }
 
   // =====================================================
-  // Integrity: Hard delete
+  // Integrity
   // =====================================================
 
   Future<void> hardDeleteNote(int id) async {
@@ -514,7 +805,9 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
 
     if (q.isNotEmpty) {
       final like = '%$q%';
-      stmt.where((t) => (t.title.like(like) | t.body.like(like)));
+      stmt.where(
+        (t) => t.title.like(like) | t.body.like(like) | t.project.like(like),
+      );
     }
 
     stmt.orderBy([
@@ -580,11 +873,7 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     required String title,
     required String body,
   }) async {
-    await updateNote(
-      id: noteId,
-      title: title,
-      body: body,
-    );
+    await updateNote(id: noteId, title: title, body: body);
   }
 
   Future<void> updateNoteDate(int id, DateTime? date) async {
@@ -640,7 +929,9 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
 
     if (q.isNotEmpty) {
       final like = '%$q%';
-      stmt.where((t) => (t.title.like(like) | t.body.like(like)));
+      stmt.where(
+        (t) => t.title.like(like) | t.body.like(like) | t.project.like(like),
+      );
     }
 
     stmt.orderBy([
@@ -756,6 +1047,7 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
       'SELECT COUNT(*) AS c FROM $tableName;',
     ).get();
     if (rows.isEmpty) return 0;
+
     final value = rows.first.data['c'];
     if (value is int) return value;
     return int.tryParse(value.toString()) ?? 0;

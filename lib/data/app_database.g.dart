@@ -204,8 +204,6 @@ class $DbNotesTable extends DbNotes with TableInfo<$DbNotesTable, DbNote> {
 
 class DbNote extends DataClass implements Insertable<DbNote> {
   final int id;
-
-  /// 구버전 text id 저장
   final String? legacyId;
   final DateTime? noteDate;
   final String title;

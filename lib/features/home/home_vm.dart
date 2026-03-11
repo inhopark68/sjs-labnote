@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:labnote/data/app_database.dart';
 import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/services/backup_service.dart';
+import 'package:labnote/utils/note_text_plain.dart';
 
 class HomeVm extends ChangeNotifier {
   final AppDatabase _data;
@@ -23,12 +24,14 @@ class HomeVm extends ChangeNotifier {
   final List<NoteListItem> items = [];
 
   static const int _pageSize = 20;
-  int _page = 0;
 
   Timer? _searchDebounce;
 
-  /// refresh 중복 실행 / 오래된 검색 결과 반영 방지용
+  /// refresh 중복 실행 / 오래된 결과 반영 방지
   int _requestToken = 0;
+
+  /// cursor 기반 다음 페이지 기준값
+  _NoteCursor? _nextCursor;
 
   @override
   void dispose() {
@@ -45,7 +48,9 @@ class HomeVm extends ChangeNotifier {
   }
 
   Future<int> insertEmptyAndReturnId() async {
-    return _data.insertNote(title: '', body: '');
+    final id = await _data.insertNote(title: '', body: '');
+    await refresh();
+    return id;
   }
 
   void toggleSearch() {
@@ -78,17 +83,13 @@ class HomeVm extends ChangeNotifier {
     loading = true;
     loadingMore = false;
     hasMore = true;
-    _page = 0;
+    _nextCursor = null;
     notifyListeners();
 
     try {
-      _debugPrintDbState();
-
-      final fetched = await _fetchPage(page: 0);
+      final fetched = await _fetchFirstPage();
 
       if (currentToken != _requestToken) return;
-
-      hasMore = fetched.length > _pageSize;
 
       final pageItems = fetched
           .take(_pageSize)
@@ -98,6 +99,9 @@ class HomeVm extends ChangeNotifier {
       items
         ..clear()
         ..addAll(pageItems);
+
+      hasMore = fetched.length > _pageSize;
+      _nextCursor = items.isNotEmpty ? _cursorFromItem(items.last) : null;
     } finally {
       if (currentToken == _requestToken) {
         loading = false;
@@ -108,13 +112,23 @@ class HomeVm extends ChangeNotifier {
 
   Future<void> loadMore() async {
     if (loading || loadingMore || !hasMore) return;
+    if (_nextCursor == null && items.isNotEmpty) return;
+
+    final currentToken = _requestToken;
 
     loadingMore = true;
     notifyListeners();
 
     try {
-      final nextPage = _page + 1;
-      final fetched = await _fetchPage(page: nextPage);
+      final cursor = _nextCursor;
+      if (cursor == null) {
+        hasMore = false;
+        return;
+      }
+
+      final fetched = await _fetchNextPage(cursor);
+
+      if (currentToken != _requestToken) return;
 
       final moreItems = fetched
           .take(_pageSize)
@@ -122,15 +136,19 @@ class HomeVm extends ChangeNotifier {
           .toList(growable: false);
 
       final existingIds = items.map((e) => e.id).toSet();
-      items.addAll(
-        moreItems.where((e) => !existingIds.contains(e.id)),
-      );
+      final deduped = moreItems
+          .where((e) => !existingIds.contains(e.id))
+          .toList(growable: false);
 
-      _page = nextPage;
+      items.addAll(deduped);
+
       hasMore = fetched.length > _pageSize;
+      _nextCursor = items.isNotEmpty ? _cursorFromItem(items.last) : null;
     } finally {
-      loadingMore = false;
-      notifyListeners();
+      if (currentToken == _requestToken) {
+        loadingMore = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -149,23 +167,33 @@ class HomeVm extends ChangeNotifier {
       await _data.deleteNote(noteId);
 
       if (items.length < _pageSize && hasMore) {
-        final fetched = await _fetchPage(page: 0);
-        hasMore = fetched.length > _pageSize;
+        final cursor = _nextCursor;
+        if (cursor != null) {
+          final fetched = await _fetchNextPage(cursor);
 
-        items
-          ..clear()
-          ..addAll(
-            fetched.take(_pageSize).map(_toListItem),
+          final moreItems = fetched
+              .take(_pageSize)
+              .map(_toListItem)
+              .toList(growable: false);
+
+          final existingIds = items.map((e) => e.id).toSet();
+          items.addAll(
+            moreItems.where((e) => !existingIds.contains(e.id)),
           );
 
-        _page = 0;
-        notifyListeners();
+          hasMore = fetched.length > _pageSize;
+          _nextCursor = items.isNotEmpty ? _cursorFromItem(items.last) : null;
+        }
       }
     } catch (e) {
       items.insert(index, removed);
+      _sortItemsInMemory();
       notifyListeners();
       rethrow;
     }
+
+    _sortItemsInMemory();
+    notifyListeners();
   }
 
   Future<void> restoreDeletedNote(int noteId) async {
@@ -174,51 +202,84 @@ class HomeVm extends ChangeNotifier {
   }
 
   Future<void> togglePin(int noteId) async {
-    await _data.togglePin(noteId);
-    await refresh();
+    final index = items.indexWhere((e) => e.id == noteId);
+
+    if (index < 0) {
+      await _data.togglePin(noteId);
+      await refresh();
+      return;
+    }
+
+    final oldItem = items[index];
+    final optimistic = oldItem.copyWith(
+      isPinned: !oldItem.isPinned,
+      updatedAt: DateTime.now(),
+    );
+
+    items[index] = optimistic;
+    _sortItemsInMemory();
+    notifyListeners();
+
+    try {
+      await _data.togglePin(noteId);
+    } catch (e) {
+      final rollbackIndex = items.indexWhere((e) => e.id == noteId);
+      if (rollbackIndex >= 0) {
+        items[rollbackIndex] = oldItem;
+      } else {
+        items.add(oldItem);
+      }
+      _sortItemsInMemory();
+      notifyListeners();
+      rethrow;
+    }
   }
 
-  Future<List<Note>> _fetchPage({required int page}) {
-    return _data.listNotes(
+  Future<List<NoteListRow>> _fetchFirstPage() {
+    return _data.listNoteRowsFirstPage(
       query: query.trim(),
       limit: _pageSize + 1,
-      offset: page * _pageSize,
     );
   }
 
-  void _debugPrintDbState() {
-    assert(() {
-      () async {
-        final all = await _data.debugCountAllRows();
-        final visible = await _data.debugCountVisibleRows();
-        debugPrint(
-          'DB rows(all incl deleted)=$all, visible(not deleted)=$visible',
-        );
-
-        final sample = await _data.debugSampleRowsIncludingDeleted(limit: 5);
-        for (final r in sample) {
-          debugPrint(
-            'row id=${r.id}, deleted=${r.isDeleted}, title=${r.title}',
-          );
-        }
-      }();
-
-      return true;
-    }());
+  Future<List<NoteListRow>> _fetchNextPage(_NoteCursor cursor) {
+    return _data.listNoteRowsAfterCursor(
+      query: query.trim(),
+      limit: _pageSize + 1,
+      lastUpdatedAt: cursor.updatedAt,
+      lastId: cursor.id,
+      lastIsPinned: cursor.isPinned,
+    );
   }
 
-  String _preview(String body) {
-    final s = body.replaceAll('\n', ' ').trim();
-    return s.length <= 80 ? s : '${s.substring(0, 80)}…';
+  _NoteCursor _cursorFromItem(NoteListItem item) {
+    return _NoteCursor(
+      id: item.id,
+      updatedAt: item.updatedAt,
+      isPinned: item.isPinned,
+    );
   }
 
-  NoteListItem _toListItem(Note n) {
+  void _sortItemsInMemory() {
+    items.sort((a, b) {
+      final pinCompare =
+          (b.isPinned ? 1 : 0).compareTo(a.isPinned ? 1 : 0);
+      if (pinCompare != 0) return pinCompare;
+
+      final updatedCompare = b.updatedAt.compareTo(a.updatedAt);
+      if (updatedCompare != 0) return updatedCompare;
+
+      return b.id.compareTo(a.id);
+    });
+  }
+
+  NoteListItem _toListItem(NoteListRow n) {
     final project = n.project?.trim();
 
     return NoteListItem(
       id: n.id,
-      title: n.title,
-      bodyPreview: _preview(n.body),
+      title: noteStoredTextToPlain(n.title),
+      bodyPreview: noteStoredTextToPlain(n.preview),
       createdAt: n.createdAt,
       updatedAt: n.updatedAt,
       isPinned: n.isPinned,
@@ -362,6 +423,20 @@ class HomeVm extends ChangeNotifier {
       title: title,
       body: body,
     );
+
+    await refresh();
     return id;
   }
+}
+
+class _NoteCursor {
+  final int id;
+  final DateTime updatedAt;
+  final bool isPinned;
+
+  const _NoteCursor({
+    required this.id,
+    required this.updatedAt,
+    required this.isPinned,
+  });
 }

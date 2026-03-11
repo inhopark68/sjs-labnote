@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -11,8 +8,10 @@ import 'package:labnote/features/reagents/reagent_draft.dart';
 import 'package:labnote/features/scan/scan_result.dart';
 import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
+import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/pages/note_detail_page.dart';
 import 'package:labnote/services/image_scan_service.dart';
+
 
 ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   String name = '스캔 시약';
@@ -38,24 +37,6 @@ ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   );
 }
 
-String quillStoredTextToPlain(String? encodedOrText) {
-  final raw = (encodedOrText ?? '').trim();
-  if (raw.isEmpty) return '';
-
-  if (raw.startsWith('[')) {
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        final doc = quill.Document.fromJson(decoded);
-        return doc.toPlainText().replaceAll('\n', ' ').trim();
-      }
-    } catch (_) {
-      // Quill JSON 파싱 실패 시 일반 문자열로 처리
-    }
-  }
-
-  return raw.replaceAll('\n', ' ').trim();
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -249,7 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vm = context.watch<HomeVm>();
     final messenger = ScaffoldMessenger.of(context);
 
     return Scaffold(
@@ -261,16 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.qr_code_scanner),
             onPressed: _pickImageAndScan,
           ),
-          IconButton(
-            tooltip: vm.searchVisible ? '검색 닫기' : '검색',
-            icon: Icon(vm.searchVisible ? Icons.close : Icons.search),
-            onPressed: vm.toggleSearch,
-          ),
-          IconButton(
-            tooltip: '새로고침',
-            icon: const Icon(Icons.refresh),
-            onPressed: vm.loading ? null : vm.refresh,
-          ),
+          const _SearchToggleAction(),
+          const _RefreshAction(),
           IconButton(
             tooltip: '휴지통',
             icon: const Icon(Icons.delete_outline),
@@ -285,32 +257,18 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
-        bottom: vm.searchVisible
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(56),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                  child: TextField(
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      hintText: '검색(제목/본문)',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: vm.setQuery,
-                  ),
-                ),
-              )
-            : null,
+        bottom: const _SearchBarBottom(),
       ),
-      body: _buildBody(vm, messenger),
+      body: _HomeBody(
+        scrollCtrl: _scrollCtrl,
+        messenger: messenger,
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: '새 노트',
         child: const Icon(Icons.add),
         onPressed: () async {
           try {
-            final id = await vm.insertEmptyAndReturnId();
+            final id = await context.read<HomeVm>().insertEmptyAndReturnId();
             debugPrint('new note id=$id (${id.runtimeType})');
 
             if (!mounted) return;
@@ -323,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
 
             if (!mounted) return;
-            await vm.refresh();
+            await context.read<HomeVm>().refresh();
           } catch (e, st) {
             debugPrint('new note failed: $e\n$st');
 
@@ -335,166 +293,317 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: (vm.hasMore && !vm.loading && vm.items.isNotEmpty)
-          ? const SafeArea(
-              child: Padding(
-                padding: EdgeInsets.all(8),
-                child: Text(
-                  '스크롤하면 더 불러옵니다',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : null,
+      bottomNavigationBar: const _LoadMoreHintBar(),
+    );
+  }
+}
+
+class _SearchToggleAction extends StatelessWidget {
+  const _SearchToggleAction();
+
+  @override
+  Widget build(BuildContext context) {
+    final searchVisible =
+        context.select<HomeVm, bool>((vm) => vm.searchVisible);
+
+    return IconButton(
+      tooltip: searchVisible ? '검색 닫기' : '검색',
+      icon: Icon(searchVisible ? Icons.close : Icons.search),
+      onPressed: () => context.read<HomeVm>().toggleSearch(),
+    );
+  }
+}
+
+class _RefreshAction extends StatelessWidget {
+  const _RefreshAction();
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = context.select<HomeVm, bool>((vm) => vm.loading);
+
+    return IconButton(
+      tooltip: '새로고침',
+      icon: const Icon(Icons.refresh),
+      onPressed: loading ? null : () => context.read<HomeVm>().refresh(),
+    );
+  }
+}
+
+class _SearchBarBottom extends StatelessWidget implements PreferredSizeWidget {
+  const _SearchBarBottom();
+
+  @override
+  Size get preferredSize => const Size.fromHeight(56);
+
+  @override
+  Widget build(BuildContext context) {
+    final searchVisible =
+        context.select<HomeVm, bool>((vm) => vm.searchVisible);
+
+    if (!searchVisible) return const SizedBox.shrink();
+
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: _SearchField(),
+    );
+  }
+}
+
+class _SearchField extends StatefulWidget {
+  const _SearchField();
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: context.read<HomeVm>().query,
     );
   }
 
-  Widget _buildBody(
-    HomeVm vm,
-    ScaffoldMessengerState messenger,
-  ) {
-    if (vm.loading && vm.items.isEmpty) {
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      autofocus: true,
+      onChanged: (v) {
+        context.read<HomeVm>().setQuery(v);
+        setState(() {});
+      },
+      decoration: InputDecoration(
+        hintText: '검색(제목/본문)',
+        prefixIcon: const Icon(Icons.search),
+        border: const OutlineInputBorder(),
+        isDense: true,
+        suffixIcon: _controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _controller.clear();
+                  context.read<HomeVm>().setQuery('');
+                  setState(() {});
+                },
+              ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
+
+class _HomeBody extends StatelessWidget {
+  final ScrollController scrollCtrl;
+  final ScaffoldMessengerState messenger;
+
+  const _HomeBody({
+    required this.scrollCtrl,
+    required this.messenger,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = context.select<HomeVm, bool>((vm) => vm.loading);
+    final items = context.select<HomeVm, List<NoteListItem>>((vm) => vm.items);
+    final loadingMore =
+        context.select<HomeVm, bool>((vm) => vm.loadingMore);
+
+    if (loading && items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (vm.items.isEmpty) {
+    if (items.isEmpty) {
       return const Center(child: Text('표시할 노트가 없습니다.'));
     }
 
     return RefreshIndicator(
-      onRefresh: vm.refresh,
+      onRefresh: () => context.read<HomeVm>().refresh(),
       child: ListView.separated(
-        controller: _scrollCtrl,
+        controller: scrollCtrl,
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: vm.items.length + (vm.loadingMore ? 1 : 0),
+        itemCount: items.length + (loadingMore ? 1 : 0),
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (context, index) {
-          if (index >= vm.items.length) {
+          if (index >= items.length) {
             return const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             );
           }
 
-          final item = vm.items[index];
-          final plainTitle = quillStoredTextToPlain(item.title);
-          final plainBody = quillStoredTextToPlain(item.bodyPreview);
-
-          return Dismissible(
+          final item = items[index];
+          return _NoteTile(
             key: ValueKey(item.id),
-            direction: DismissDirection.endToStart,
-            background: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 16),
-              color: Colors.red,
-              child: const Icon(Icons.delete, color: Colors.white),
-            ),
-            confirmDismiss: (_) async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('삭제할까요?'),
-                  content: const Text('노트가 삭제됨으로 표시됩니다.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('취소'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('삭제'),
-                    ),
-                  ],
-                ),
-              );
-              return ok == true;
-            },
-            onDismissed: (_) async {
-              try {
-                await vm.deleteNoteOptimistic(item.id);
-
-                if (!mounted) return;
-
-                messenger
-                  ..clearSnackBars()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: const Text('삭제됨'),
-                      action: SnackBarAction(
-                        label: '되돌리기',
-                        onPressed: () async {
-                          try {
-                            await vm.restoreDeletedNote(item.id);
-                          } catch (e) {
-                            if (!mounted) return;
-                            messenger.showSnackBar(
-                              SnackBar(content: Text('복구 실패: $e')),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  );
-              } catch (e) {
-                if (!mounted) return;
-                messenger.showSnackBar(
-                  SnackBar(content: Text('삭제 실패: $e')),
-                );
-              }
-            },
-            child: ListTile(
-              leading: item.isPinned ? const Icon(Icons.push_pin) : null,
-              title: Text(
-                plainTitle.isEmpty ? '(제목 없음)' : plainTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                plainBody,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                tooltip: item.isPinned ? '고정 해제' : '상단 고정',
-                icon: Icon(
-                  item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                ),
-                onPressed: () async {
-                  try {
-                    final willPin = !item.isPinned;
-                    await vm.togglePin(item.id);
-
-                    if (!mounted) return;
-                    messenger
-                      ..clearSnackBars()
-                      ..showSnackBar(
-                        SnackBar(
-                          content: Text(willPin ? '상단 고정됨' : '고정 해제됨'),
-                        ),
-                      );
-                  } catch (e) {
-                    if (!mounted) return;
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('고정 상태 변경 실패: $e')),
-                    );
-                  }
-                },
-              ),
-              onTap: () async {
-                final changed = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => NoteDetailPage(noteId: item.id),
-                  ),
-                );
-
-                if (changed == true && mounted) {
-                  await vm.refresh();
-                }
-              },
-            ),
+            item: item,
+            messenger: messenger,
           );
         },
+      ),
+    );
+  }
+}
+
+class _NoteTile extends StatelessWidget {
+  final NoteListItem item;
+  final ScaffoldMessengerState messenger;
+
+  const _NoteTile({
+    super.key,
+    required this.item,
+    required this.messenger,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = context.read<HomeVm>();
+
+    return Dismissible(
+      key: ValueKey(item.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (_) async {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('삭제할까요?'),
+            content: const Text('노트가 삭제됨으로 표시됩니다.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('취소'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('삭제'),
+              ),
+            ],
+          ),
+        );
+        return ok == true;
+      },
+      onDismissed: (_) async {
+        try {
+          await vm.deleteNoteOptimistic(item.id);
+
+          if (!context.mounted) return;
+
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                content: const Text('삭제됨'),
+                action: SnackBarAction(
+                  label: '되돌리기',
+                  onPressed: () async {
+                    try {
+                      await vm.restoreDeletedNote(item.id);
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('복구 실패: $e')),
+                      );
+                    }
+                  },
+                ),
+              ),
+            );
+        } catch (e) {
+          if (!context.mounted) return;
+          messenger.showSnackBar(
+            SnackBar(content: Text('삭제 실패: $e')),
+          );
+        }
+      },
+      child: ListTile(
+        leading: item.isPinned ? const Icon(Icons.push_pin) : null,
+        title: Text(
+          item.title.isEmpty ? '(제목 없음)' : item.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          item.bodyPreview,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: IconButton(
+          tooltip: item.isPinned ? '고정 해제' : '상단 고정',
+          icon: Icon(
+            item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+          ),
+          onPressed: () async {
+            try {
+              final willPin = !item.isPinned;
+              await vm.togglePin(item.id);
+
+              if (!context.mounted) return;
+              messenger
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(willPin ? '상단 고정됨' : '고정 해제됨'),
+                  ),
+                );
+            } catch (e) {
+              if (!context.mounted) return;
+              messenger.showSnackBar(
+                SnackBar(content: Text('고정 상태 변경 실패: $e')),
+              );
+            }
+          },
+        ),
+        onTap: () async {
+          final changed = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => NoteDetailPage(noteId: item.id),
+            ),
+          );
+
+          if (changed == true && context.mounted) {
+            await vm.refresh();
+          }
+        },
+      ),
+    );
+  }
+}
+class _LoadMoreHintBar extends StatelessWidget {
+  const _LoadMoreHintBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMore = context.select<HomeVm, bool>((vm) => vm.hasMore);
+    final loading = context.select<HomeVm, bool>((vm) => vm.loading);
+    final hasItems =
+        context.select<HomeVm, bool>((vm) => vm.items.isNotEmpty);
+
+    if (!(hasMore && !loading && hasItems)) {
+      return const SizedBox.shrink();
+    }
+
+    return const SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(8),
+        child: Text(
+          '스크롤하면 더 불러옵니다',
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
