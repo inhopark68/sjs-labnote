@@ -6,11 +6,37 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'package:labnote/features/home/home_vm.dart';
-import 'package:labnote/features/notes/note_detail_page.dart';
+import 'package:labnote/features/reagents/add_reagent_draft_dialog.dart';
+import 'package:labnote/features/reagents/reagent_draft.dart';
 import 'package:labnote/features/scan/scan_result.dart';
 import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
+import 'package:labnote/pages/note_detail_page.dart';
 import 'package:labnote/services/image_scan_service.dart';
+
+ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
+  String name = '스캔 시약';
+
+  if ((result.parsed.company?.isNotEmpty ?? false) &&
+      (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+    name = '${result.parsed.company} ${result.parsed.catalogNumber}';
+  } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+    name = '시약 ${result.parsed.catalogNumber}';
+  } else if (result.text.trim().isNotEmpty) {
+    final firstLine = result.text.trim().split('\n').first.trim();
+    if (firstLine.isNotEmpty) {
+      name = firstLine.length > 40 ? firstLine.substring(0, 40) : firstLine;
+    }
+  }
+
+  return ReagentDraft(
+    name: name,
+    company: result.parsed.company,
+    catalogNumber: result.parsed.catalogNumber,
+    lotNumber: result.parsed.lotNumber,
+    memo: result.text.trim().isEmpty ? null : result.text.trim(),
+  );
+}
 
 String quillStoredTextToPlain(String? encodedOrText) {
   final raw = (encodedOrText ?? '').trim();
@@ -39,33 +65,50 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _scrollCtrl = ScrollController();
-  final _picker = ImagePicker();
-  final _imageScanService = ImageScanService();
+  final ScrollController _scrollCtrl = ScrollController();
+  final ImagePicker _picker = ImagePicker();
+  final ImageScanService _imageScanService = ImageScanService();
 
   bool _inited = false;
   HomeVm? _vm;
 
   String _buildScanNoteTitle(ScanFromImageResult result) {
-    if (result.codes.isNotEmpty) {
+    String title;
+
+    if ((result.parsed.company?.isNotEmpty ?? false) &&
+        (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+      title = '${result.parsed.company} ${result.parsed.catalogNumber}';
+    } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+      title = '시약 ${result.parsed.catalogNumber}';
+    } else if (result.codes.isNotEmpty) {
       final first = result.codes.first;
       final value = (first.displayValue ?? first.rawValue ?? '').trim();
-      if (value.isNotEmpty) {
-        return '스캔: $value';
+      title = value.isNotEmpty ? '스캔: $value' : '스캔 가져오기';
+    } else {
+      final text = result.text.trim();
+      if (text.isNotEmpty) {
+        final firstLine = text.split('\n').first.trim();
+        title = firstLine.isNotEmpty ? firstLine : '스캔 가져오기';
+      } else {
+        title = '스캔 가져오기';
       }
     }
 
-    final text = result.text.trim();
-    if (text.isNotEmpty) {
-      final firstLine = text.split('\n').first.trim();
-      if (firstLine.isNotEmpty) {
-        return firstLine.length > 30
-            ? firstLine.substring(0, 30)
-            : firstLine;
-      }
-    }
+    return title.length > 40 ? title.substring(0, 40) : title;
+  }
 
-    return '스캔 가져오기';
+  ReagentDraft _buildReagentDraftFromScanResult(
+    ScanFromImageResult result,
+    String combinedText,
+  ) {
+    final base = buildReagentDraftFromScan(result);
+    return ReagentDraft(
+      name: base.name,
+      company: base.company,
+      catalogNumber: base.catalogNumber,
+      lotNumber: base.lotNumber,
+      memo: combinedText.trim().isEmpty ? null : combinedText.trim(),
+    );
   }
 
   @override
@@ -110,11 +153,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickImageAndScan() async {
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery);
+      final messenger = ScaffoldMessenger.of(context);
+
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
+      );
       if (file == null) return;
 
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
       messenger
         ..clearSnackBars()
         ..showSnackBar(
@@ -126,34 +175,68 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       messenger.clearSnackBars();
 
-      final combinedText = await showDialog<String>(
+      if (result.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('인식된 QR/OCR 정보가 없습니다.')),
+        );
+        return;
+      }
+
+      final dialogResult = await showDialog<ScanDialogResult>(
         context: context,
         builder: (_) => ScanResultDialog(result: result),
       );
 
-      if (combinedText == null || combinedText.trim().isEmpty) return;
-      if (!mounted) return;
+      if (dialogResult == null) return;
 
-      final vm = context.read<HomeVm>();
+      if (dialogResult.action == ScanDialogAction.insertNote) {
+        final vm = context.read<HomeVm>();
+        final title = _buildScanNoteTitle(result);
 
-      final title = _buildScanNoteTitle(result);
-      final noteId = await vm.createNoteFromScannedText(
-        title: title,
-        body: combinedText.trim(),
-      );
+        final noteId = await vm.createNoteFromScannedText(
+          title: title,
+          body: dialogResult.combinedText.trim(),
+        );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => NoteDetailPage(noteId: noteId),
-        ),
-      );
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NoteDetailPage(noteId: noteId),
+          ),
+        );
 
-      if (!mounted) return;
-      await vm.refresh();
-    } catch (e) {
+        if (!mounted) return;
+        await vm.refresh();
+        return;
+      }
+
+      if (dialogResult.action == ScanDialogAction.addReagent) {
+        final draft = _buildReagentDraftFromScanResult(
+          result,
+          dialogResult.combinedText,
+        );
+
+        final submit = await showDialog<ReagentDraftSubmitResult>(
+          context: context,
+          builder: (_) => AddReagentDraftDialog(
+            initialDraft: draft,
+          ),
+        );
+
+        if (submit == null) return;
+
+        debugPrint('reagent name=${submit.name}');
+        debugPrint('company=${submit.company}');
+        debugPrint('catalogNumber=${submit.catalogNumber}');
+        debugPrint('lotNumber=${submit.lotNumber}');
+        debugPrint('memo=${submit.memo}');
+      }
+    } catch (e, st) {
+      debugPrint('OCR scan failed: $e');
+      debugPrint('$st');
+
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       messenger
@@ -270,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
     HomeVm vm,
     ScaffoldMessengerState messenger,
   ) {
-    if (vm.loading) {
+    if (vm.loading && vm.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
