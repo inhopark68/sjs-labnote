@@ -16,9 +16,26 @@ class NoteDateCard extends StatelessWidget {
     final yyyy = date.year.toString().padLeft(4, '0');
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
-    return '$yyyy-$mm-$dd';
+
+    final hh = date.hour.toString().padLeft(2, '0');
+    final min = date.minute.toString().padLeft(2, '0');
+    final ss = date.second.toString().padLeft(2, '0');
+
+    return '$yyyy-$mm-$dd $hh:$min:$ss';
   }
 
+  String _formatDateTime(DateTime date) {
+    final yyyy = date.year.toString().padLeft(4, '0');
+    final mm = date.month.toString().padLeft(2, '0');
+    final dd = date.day.toString().padLeft(2, '0');
+
+    final hh = date.hour.toString().padLeft(2, '0');
+    final min = date.minute.toString().padLeft(2, '0');
+    final ss = date.second.toString().padLeft(2, '0');
+
+    return '$yyyy-$mm-$dd $hh:$min:$ss';
+  }
+  
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

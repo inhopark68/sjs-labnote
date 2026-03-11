@@ -12,7 +12,6 @@ import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/pages/note_detail_page.dart';
 import 'package:labnote/services/image_scan_service.dart';
 
-
 ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   String name = '스캔 시약';
 
