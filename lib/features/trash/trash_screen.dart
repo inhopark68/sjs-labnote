@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/app_database.dart';
-import '../notes/note_detail_page.dart';
+import '../notes/note_detail_page.dart.bak';
 
 class TrashScreen extends StatefulWidget {
   const TrashScreen({super.key});

@@ -3,13 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:provider/provider.dart';
 
-// -----------------------------
-// 프로젝트 내부 모듈 import
-// -----------------------------
 import 'data/app_database.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/home_vm.dart';
-import 'features/notes/notes_page.dart';
+import 'pages/note_detail_page.dart';
 
 import 'services/backup_service.dart';
 import 'services/backup_service_impl.dart';
@@ -21,7 +18,6 @@ void main() {
   runApp(const MyApp());
 }
 
-/// 앱 전체 DI(Provider) + MaterialApp 구성
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -33,15 +29,12 @@ class MyApp extends StatelessWidget {
           create: (_) => AppDatabase(),
           dispose: (_, db) => db.close(),
         ),
-
         ChangeNotifierProvider<AppSettings>(
           create: (_) => AppSettings(),
         ),
-
         Provider<BackupService>(
           create: (ctx) => BackupServiceImpl(ctx.read<AppDatabase>()),
         ),
-
         ChangeNotifierProvider<HomeVm>(
           create: (ctx) => HomeVm(ctx.read<AppDatabase>()),
         ),
@@ -66,8 +59,14 @@ class MyApp extends StatelessWidget {
             ],
             supportedLocales: FlutterQuillLocalizations.supportedLocales,
             home: HomeScreen(),
-            routes: {
-              '/notes': (_) => const NotesPage(),
+            onGenerateRoute: (settings) {
+              if (settings.name == '/noteDetail') {
+                final noteId = settings.arguments as int;
+                return MaterialPageRoute(
+                  builder: (_) => NoteDetailPage(noteId: noteId),
+                );
+              }
+              return null;
             },
           );
         },

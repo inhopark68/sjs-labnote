@@ -22,4 +22,4 @@ Future<void> hardDeleteNoteWithAssets({
   }
 
   await db.hardDeleteNote(noteId);
-}note_delete_utils.dart
+}

@@ -25,8 +25,8 @@ abstract class NotesRepository {
     DateTime? noteDate,
   });
 
-  Future<void> updateNote({
-    required int id,
+  Future<void> updateNoteContent(
+    int noteId, {
     required String title,
     required String body,
   });
@@ -560,7 +560,6 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     );
   }
 
-  @override
   Future<void> updateNote({
     required int id,
     required String title,
@@ -572,6 +571,19 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
         body: Value(body),
         updatedAt: Value(DateTime.now()),
       ),
+    );
+  }
+
+  @override
+  Future<void> updateNoteContent(
+    int noteId, {
+    required String title,
+    required String body,
+  }) async {
+    await updateNote(
+      id: noteId,
+      title: title,
+      body: body,
     );
   }
 

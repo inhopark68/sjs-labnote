@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
 
-class NoteTitleSection extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool enabled;
-  final bool ocrSupported;
-  final Future<String?> Function()? runOcrAndReturnText;
-
-  const NoteTitleSection({
+class ResearchTitleField extends StatelessWidget {
+  const ResearchTitleField({
     super.key,
     required this.controller,
-    required this.focusNode,
-    required this.enabled,
-    this.ocrSupported = false,
-    this.runOcrAndReturnText,
+    required this.ocrSupported,
+    required this.runOcrAndReturnText,
+    this.label = '연구제목',
+    this.hintText = '연구제목을 입력하세요',
+    this.onChanged,
+    this.enabled = true,
   });
+
+  final TextEditingController controller;
+  final bool ocrSupported;
+  final Future<String?> Function() runOcrAndReturnText;
+  final String label;
+  final String hintText;
+  final ValueChanged<String>? onChanged;
+  final bool enabled;
 
   static List<String> _extractCandidates(String rawText) {
     return rawText
@@ -39,7 +43,7 @@ class NoteTitleSection extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('연구 제목으로 넣을 문장을 선택하세요'),
+          title: const Text('연구제목으로 넣을 문장을 선택하세요'),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView.separated(
@@ -71,9 +75,9 @@ class NoteTitleSection extends StatelessWidget {
   }
 
   Future<void> _handleOcr(BuildContext context) async {
-    if (!ocrSupported || !enabled || runOcrAndReturnText == null) return;
+    if (!ocrSupported || !enabled) return;
 
-    final rawText = await runOcrAndReturnText!.call();
+    final rawText = await runOcrAndReturnText();
     if (rawText == null || rawText.trim().isEmpty) return;
 
     if (!context.mounted) return;
@@ -87,24 +91,28 @@ class NoteTitleSection extends StatelessWidget {
     controller.selection = TextSelection.collapsed(
       offset: titleText.length,
     );
+
+    onChanged?.call(titleText);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: TextField(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        TextField(
           controller: controller,
-          focusNode: focusNode,
           enabled: enabled,
+          onChanged: onChanged,
           maxLines: 1,
-          textInputAction: TextInputAction.done,
           decoration: InputDecoration(
-            labelText: '연구 제목',
-            hintText: '연구 제목을 입력하세요',
-            border: const OutlineInputBorder(),
-            suffixIcon: (ocrSupported && runOcrAndReturnText != null)
+            hintText: hintText,
+            suffixIcon: ocrSupported
                 ? IconButton(
                     tooltip: 'OCR로 제목 입력',
                     icon: const Icon(Icons.text_snippet_outlined),
@@ -113,7 +121,7 @@ class NoteTitleSection extends StatelessWidget {
                 : null,
           ),
         ),
-      ),
+      ],
     );
   }
 }
