@@ -1,6 +1,6 @@
 import 'package:drift/drift.dart';
-import '../data/app_database.dart';
-
+import 'package:drift/native.dart'; // 있든 없든 상관없음
+import '../app_database.dart';
 part 'note_items_dao.g.dart';
 
 @DriftAccessor(tables: [DbNoteReagents, DbNoteMaterials, DbNoteReferences])

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'db/app_database_stub.dart' as stub;
 import 'state/database_manager.dart';
-import 'dao/note_dao.dart';
+import 'data/dao/note_dao.dart';
 import 'services/attachment_storage.dart';
 import 'services/image_compressor.dart';
 import 'repositories/reagent_repository_drift.dart';

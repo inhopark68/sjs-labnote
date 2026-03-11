@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
-import '../app_db.dart';
+import '../../../app_db.dart';
 
 class ScannedItemsDao extends DatabaseAccessor<AppDb>
     with _$ScannedItemsDaoMixin {

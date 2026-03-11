@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../dao/note_dao.dart';
+import '../../data/dao/note_dao.dart';
 import '../../repositories/reagent_repository_drift.dart';
 import '../../services/attachment_storage.dart';
 import '../../services/image_compressor.dart';

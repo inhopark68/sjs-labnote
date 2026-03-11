@@ -2,7 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-import '../dao/note_items_dao.dart';
+import 'dao/note_items_dao.dart';
 
 part 'app_database.g.dart';
 

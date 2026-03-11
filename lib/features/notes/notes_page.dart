@@ -1,12 +1,347 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
 
-class NotesPage extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../data/app_database.dart';
+import 'note_detail_page.dart';
+import '../../utils/quill_doc_utils.dart';
+
+// =====================================================
+// Notes Page
+// =====================================================
+
+class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
 
   @override
+  State<NotesPage> createState() => _NotesPageState();
+}
+
+class _NotesPageState extends State<NotesPage> {
+  AppDatabase get _db => context.read<AppDatabase>();
+
+  final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+
+  bool _loading = true;
+  String _query = '';
+  List<Note> _notes = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadNotes);
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadNotes() async {
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
+    try {
+      final notes = await _db.listNotes(query: _query);
+
+      if (!mounted) return;
+      setState(() {
+        _notes = notes;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('노트를 불러오지 못했습니다: $e')),
+      );
+    }
+  }
+
+  Future<void> _createNote() async {
+    try {
+      final newId = await _db.insertNote(
+        title: '',
+        body: '',
+      );
+
+      if (!mounted) return;
+
+      final changed = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteDetailPage(noteId: newId),
+        ),
+      );
+
+      if (!mounted) return;
+      if (changed == true || changed == null) {
+        await _loadNotes();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('새 노트 생성 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> _openNote(Note note) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NoteDetailPage(noteId: note.id),
+      ),
+    );
+
+    if (!mounted) return;
+    if (changed == true || changed == null) {
+      await _loadNotes();
+    }
+  }
+
+  Future<void> _moveToTrash(Note note) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('휴지통으로 이동'),
+        content: Text('"${_titleOf(note)}" 노트를 휴지통으로 이동할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('이동'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await _db.deleteNote(note.id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('휴지통으로 이동했습니다.')),
+      );
+      await _loadNotes();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('휴지통 이동 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> _togglePin(Note note) async {
+    try {
+      await _db.togglePin(note.id);
+      await _loadNotes();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('고정 상태 변경 실패: $e')),
+      );
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _query = value.trim();
+
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _loadNotes();
+    });
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchCtrl.clear();
+    setState(() => _query = '');
+    _loadNotes();
+  }
+
+  String _titleOf(Note note) {
+    final t = quillStoredTextToPlain(note.title);
+    return t.isEmpty ? '(제목 없음)' : t;
+  }
+
+  String _previewOf(Note note) {
+    final body = quillStoredTextToPlain(note.body);
+    if (body.isEmpty) return '내용 없음';
+    if (body.length <= 120) return body;
+    return '${body.substring(0, 120)}...';
+  }
+
+  String _dateText(Note note) {
+    final dt = note.updatedAt;
+    final yyyy = dt.year.toString().padLeft(4, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$yyyy-$mm-$dd $hh:$min';
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: TextField(
+        controller: _searchCtrl,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '제목 또는 내용 검색',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: '검색어 지우기',
+                  onPressed: _clearSearch,
+                  icon: const Icon(Icons.close),
+                ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        onChanged: _onSearchChanged,
+        onSubmitted: (_) {
+          _searchDebounce?.cancel();
+          _loadNotes();
+        },
+      ),
+    );
+  }
+
+  Widget _buildNoteTile(Note note) {
+    final title = _titleOf(note);
+    final preview = _previewOf(note);
+    final dateText = _dateText(note);
+
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        title: Row(
+          children: [
+            if (note.isPinned) ...[
+              const Icon(Icons.push_pin, size: 18),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                preview,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                dateText,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        onTap: () => _openNote(note),
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            switch (value) {
+              case 'pin':
+                _togglePin(note);
+                break;
+              case 'trash':
+                _moveToTrash(note);
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'pin',
+              child: Text(note.isPinned ? '고정 해제' : '상단 고정'),
+            ),
+            const PopupMenuItem(
+              value: 'trash',
+              child: Text('휴지통으로 이동'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_notes.isEmpty) {
+      return const Center(
+        child: Text('노트가 없습니다. 오른쪽 아래 + 버튼으로 새 노트를 만드세요.'),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadNotes,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+        itemCount: _notes.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final note = _notes[index];
+          return _buildNoteTile(note);
+        },
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: Text('NotesPage')),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('연구 노트'),
+        actions: [
+          IconButton(
+            onPressed: _loadNotes,
+            icon: const Icon(Icons.refresh),
+            tooltip: '새로고침',
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _createNote,
+        child: const Icon(Icons.add),
+      ),
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 }
