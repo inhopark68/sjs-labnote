@@ -173,6 +173,11 @@ class HomeVm extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> togglePin(int noteId) async {
+    await _data.togglePin(noteId);
+    await refresh();
+  }
+
   Future<List<Note>> _fetchPage({required int page}) {
     return _data.listNotes(
       query: query.trim(),

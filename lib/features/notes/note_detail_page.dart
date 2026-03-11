@@ -853,8 +853,7 @@ class _NoteDetailPageState extends State<NoteDetailPage>
   void _onTitleChanged() {
     if (_suppressEditorListener || _noteIsDeleted) return;
 
-    _enforceTitleOneLine();
-    _markDirtyAndDebounceSave(triggerRebuild: true);
+    _markDirtyAndDebounceSave(triggerRebuild:false);
   }
 
   void _onBodyChanged() {
@@ -896,7 +895,15 @@ class _NoteDetailPageState extends State<NoteDetailPage>
     if (_saving) return;
     if (!force && !_dirty) return;
 
-    final titleJson = encodeDoc(_titleQuill);
+    final normalizedTitle = _titleQuill.document
+        .toPlainText()
+        .replaceAll('\n', ' ')
+        .trim();
+
+    final titleJson = jsonEncode([
+      {'insert': normalizedTitle.isEmpty ? '\n' : '$normalizedTitle\n'}
+    ]);
+
     final bodyJson = encodeDoc(_bodyQuill);
 
     setState(() => _saving = true);

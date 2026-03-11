@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final vm = _vm;
     if (vm == null) return;
     if (!_scrollCtrl.hasClients) return;
+    if (vm.loading || vm.loadingMore || !vm.hasMore) return;
 
     final threshold = _scrollCtrl.position.maxScrollExtent - 200;
     if (_scrollCtrl.position.pixels > threshold) {
@@ -369,6 +370,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 plainBody,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
+              ),
+              trailing: IconButton(
+                tooltip: item.isPinned ? '고정 해제' : '상단 고정',
+                icon: Icon(
+                  item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                ),
+                onPressed: () async {
+                  try {
+                    final willPin = !item.isPinned;
+                    await vm.togglePin(item.id);
+
+                    if (!mounted) return;
+                    messenger
+                      ..clearSnackBars()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(willPin ? '상단 고정됨' : '고정 해제됨'),
+                        ),
+                      );
+                  } catch (e) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('고정 상태 변경 실패: $e')),
+                    );
+                  }
+                },
               ),
               onTap: () async {
                 final changed = await Navigator.push<bool>(
