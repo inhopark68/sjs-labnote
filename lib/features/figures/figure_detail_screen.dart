@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -344,7 +345,7 @@ class _PanelPreviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color badgeColor;
+    Color? badgeColor;
     switch (panel.status) {
       case 'selected':
         badgeColor = Colors.blue;
@@ -381,7 +382,7 @@ class _PanelPreviewTile extends StatelessWidget {
                   vertical: 2,
                 ),
                 decoration: BoxDecoration(
-                  color: badgeColor.withOpacity(0.15),
+                  color: badgeColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -396,18 +397,8 @@ class _PanelPreviewTile extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: Container(
-              width: double.infinity,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.image_outlined,
-                size: 28,
-              ),
+            child: _PanelAttachmentPreview(
+              sourceAttachmentId: panel.sourceAttachmentId,
             ),
           ),
           const SizedBox(height: 8),
@@ -441,7 +432,65 @@ class _PanelPreviewTile extends StatelessWidget {
       ),
     );
   }
-}
+  }
+  class _PanelAttachmentPreview extends StatelessWidget {
+    const _PanelAttachmentPreview({
+      required this.sourceAttachmentId,
+    });
+
+    final int? sourceAttachmentId;
+
+    @override
+    Widget build(BuildContext context) {
+      if (sourceAttachmentId == null) {
+        return _emptyPreview(context);
+      }
+
+      final db = context.read<AppDatabase>();
+
+      return FutureBuilder<NoteAttachmentRow?>(
+        future: db.getNoteAttachmentById(sourceAttachmentId!),
+        builder: (context, snapshot) {
+          final attachment = snapshot.data;
+
+          if (attachment == null || attachment.filePath.isEmpty) {
+            return _emptyPreview(context);
+          }
+
+          final file = File(attachment.filePath);
+
+          if (!file.existsSync()) {
+            return _emptyPreview(context);
+          }
+
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              file,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _emptyPreview(context),
+            ),
+          );
+        },
+      );
+    }
+
+    Widget _emptyPreview(BuildContext context) {
+      return Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(
+          Icons.image_outlined,
+          size: 28,
+        ),
+      );
+    }
+  }
 
 class _ReorderablePanelList extends StatelessWidget {
   const _ReorderablePanelList({

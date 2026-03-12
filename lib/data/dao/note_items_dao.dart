@@ -1,9 +1,12 @@
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart'; // 있든 없든 상관없음
+
 import '../app_database.dart';
+
 part 'note_items_dao.g.dart';
 
-@DriftAccessor(tables: [DbNoteReagents, DbNoteMaterials, DbNoteReferences])
+@DriftAccessor(
+  tables: [DbNoteReagents, DbNoteMaterials, DbNoteReferences],
+)
 class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     with _$NoteItemsDaoMixin {
   NoteItemsDao(AppDatabase db) : super(db);
@@ -19,13 +22,13 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
-  Future<void> deleteReagent(String id) =>
-      (delete(dbNoteReagents)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteReagent(String id) {
+    return (delete(dbNoteReagents)..where((t) => t.id.equals(id))).go();
+  }
 
-  /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
-  Future<void> insertReagentRaw({
+  Future<int> insertReagentRaw({
     required String id,
-    required int noteId, // ✅ String -> int
+    required int noteId,
     required String name,
     String? catalogNumber,
     String? lotNumber,
@@ -36,7 +39,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteReagents).insert(
       DbNoteReagentsCompanion.insert(
         id: id,
-        noteId: noteId, // ✅ int
+        noteId: noteId,
         name: name,
         createdAt: createdAt,
         catalogNumber: Value(_clean(catalogNumber)),
@@ -58,13 +61,13 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
-  Future<void> deleteMaterial(String id) =>
-      (delete(dbNoteMaterials)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteMaterial(String id) {
+    return (delete(dbNoteMaterials)..where((t) => t.id.equals(id))).go();
+  }
 
-  /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
-  Future<void> insertMaterialRaw({
+  Future<int> insertMaterialRaw({
     required String id,
-    required int noteId, // ✅ String -> int
+    required int noteId,
     required String name,
     String? catalogNumber,
     String? lotNumber,
@@ -75,7 +78,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteMaterials).insert(
       DbNoteMaterialsCompanion.insert(
         id: id,
-        noteId: noteId, // ✅ int
+        noteId: noteId,
         name: name,
         createdAt: createdAt,
         catalogNumber: Value(_clean(catalogNumber)),
@@ -97,13 +100,13 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
-  Future<void> deleteReference(String id) =>
-      (delete(dbNoteReferences)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteReference(String id) {
+    return (delete(dbNoteReferences)..where((t) => t.id.equals(id))).go();
+  }
 
-  /// ✅ UI에서 Value()를 쓰지 않기 위한 Raw Insert
-  Future<void> insertReferenceRaw({
+  Future<int> insertReferenceRaw({
     required String id,
-    required int noteId, // ✅ String -> int
+    required int noteId,
     required String doi,
     String? memo,
     required DateTime createdAt,
@@ -111,7 +114,7 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
     return into(dbNoteReferences).insert(
       DbNoteReferencesCompanion.insert(
         id: id,
-        noteId: noteId, // ✅ int
+        noteId: noteId,
         doi: doi,
         createdAt: createdAt,
         memo: Value(_clean(memo)),
@@ -123,7 +126,6 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // Integrity helpers
   // =========================================================
 
-  /// ✅ 노트 완전삭제(hard delete) 시: 관련 시약/재료/DOI 모두 삭제
   Future<void> deleteAllForNote(int noteId) async {
     await batch((b) {
       b.deleteWhere(dbNoteReagents, (t) => t.noteId.equals(noteId));
@@ -136,10 +138,9 @@ class NoteItemsDao extends DatabaseAccessor<AppDatabase>
   // Utils
   // =========================================================
 
-  /// trim 후 비어있으면 null 처리
-  String? _clean(String? v) {
-    if (v == null) return null;
-    final t = v.trim();
-    return t.isEmpty ? null : t;
+  String? _clean(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 }

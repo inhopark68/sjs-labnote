@@ -18,7 +18,24 @@ class AddToFigureDialog extends StatefulWidget {
 
 class _AddToFigureDialogState extends State<AddToFigureDialog> {
   int? selectedFigureId;
-  final panelCtrl = TextEditingController();
+  final TextEditingController panelCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    panelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fillSuggestedPanelLabel(int figureId) async {
+    final db = context.read<AppDatabase>();
+    final suggested = await db.getNextPanelLabel(figureId);
+
+    if (!mounted) return;
+
+    setState(() {
+      panelCtrl.text = suggested;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,35 +43,58 @@ class _AddToFigureDialogState extends State<AddToFigureDialog> {
 
     return AlertDialog(
       title: const Text('Figure에 추가'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DropdownButtonFormField<int>(
-            value: selectedFigureId,
-            hint: const Text('Figure 선택'),
-            items: vm.figures
-                .map(
-                  (f) => DropdownMenuItem(
-                    value: f.id,
-                    child: Text(f.title),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) {
-              setState(() {
-                selectedFigureId = v;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: panelCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Panel label',
-              hintText: 'A',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (vm.figures.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '등록된 Figure가 없습니다.\n먼저 Figure를 생성해 주세요.',
+                ),
+              ),
+            DropdownButtonFormField<int>(
+              value: selectedFigureId,
+              decoration: const InputDecoration(
+                labelText: 'Figure',
+              ),
+              hint: const Text('Figure 선택'),
+              items: vm.figures
+                  .map(
+                    (f) => DropdownMenuItem<int>(
+                      value: f.id,
+                      child: Text(
+                        f.title,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: vm.figures.isEmpty
+                  ? null
+                  : (v) async {
+                      if (v == null) return;
+
+                      setState(() {
+                        selectedFigureId = v;
+                      });
+
+                      await _fillSuggestedPanelLabel(v);
+                    },
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: panelCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Panel label',
+                hintText: 'A',
+              ),
+              enabled: vm.figures.isNotEmpty,
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -62,24 +102,25 @@ class _AddToFigureDialogState extends State<AddToFigureDialog> {
           child: const Text('취소'),
         ),
         FilledButton(
-          onPressed: () async {
-            final figureId = selectedFigureId;
-            final label = panelCtrl.text.trim();
+          onPressed: vm.figures.isEmpty
+              ? null
+              : () async {
+                  final figureId = selectedFigureId;
+                  final label = panelCtrl.text.trim().toUpperCase();
 
-            if (figureId == null || label.isEmpty) return;
+                  if (figureId == null || label.isEmpty) return;
 
-            final db = context.read<AppDatabase>();
+                  final db = context.read<AppDatabase>();
 
-            await db.insertFigurePanel(
-              figureId: figureId,
-              panelLabel: label,
-              sourceNoteId: widget.noteId,
-            );
+                  await db.insertFigurePanel(
+                    figureId: figureId,
+                    panelLabel: label,
+                    sourceNoteId: widget.noteId,
+                  );
 
-            if (!mounted) return;
-
-            Navigator.pop(context, true);
-          },
+                  if (!mounted) return;
+                  Navigator.pop(context, true);
+                },
           child: const Text('추가'),
         ),
       ],

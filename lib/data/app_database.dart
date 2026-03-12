@@ -168,6 +168,24 @@ class FigurePanelRow {
   });
 }
 
+class NoteAttachmentRow {
+  final int id;
+  final int noteId;
+  final String filePath;
+  final String? mimeType;
+  final String kind;
+  final DateTime createdAt;
+
+  NoteAttachmentRow({
+    required this.id,
+    required this.noteId,
+    required this.filePath,
+    required this.mimeType,
+    required this.kind,
+    required this.createdAt,
+  });
+}
+
 // =====================================================
 // Drift Tables
 // =====================================================
@@ -176,7 +194,6 @@ class DbNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
 
   TextColumn get legacyId => text().nullable()();
-
   DateTimeColumn get noteDate => dateTime().nullable()();
 
   TextColumn get title => text().withDefault(const Constant(''))();
@@ -280,9 +297,7 @@ class DbNoteAttachments extends Table {
       integer().references(DbNotes, #id, onDelete: KeyAction.cascade)();
 
   TextColumn get filePath => text()();
-
   TextColumn get mimeType => text().nullable()();
-
   TextColumn get kind => text().withDefault(const Constant('image'))();
 
   DateTimeColumn get createdAt => dateTime()();
@@ -302,9 +317,10 @@ class DbNoteAttachments extends Table {
     DbFigurePanels,
     DbNoteAttachments,
   ],
+  daos: [NoteItemsDao],
 )
 class AppDatabase extends _$AppDatabase implements NotesRepository {
-  AppDatabase() : super(_openConnection());
+  AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   late final NoteItemsDao noteItemsDao = NoteItemsDao(this);
 
@@ -315,23 +331,25 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
-          await _createIndexes();
         },
         onUpgrade: (m, from, to) async {
-          await customStatement('PRAGMA foreign_keys = OFF;');
-          try {
-            if (from < 5) {
-              await _createMissingTablesIfNeeded(m);
-            }
+          if (from < 5) {
+            await m.createTable(dbFigures);
+            await m.createTable(dbFigurePanels);
+          }
 
-            if (from < 6) {
-              await _addFigureColumnsIfNeeded();
-            }
+          if (from < 6) {
+            await m.addColumn(dbFigures, dbFigures.layoutType);
+            await m.addColumn(dbFigures, dbFigures.caption);
+          }
 
-            if (from <7) {
-              await m.creatable(dbNoteAttachments);
-            }
-          },
+          if (from < 7) {
+            await m.createTable(dbNoteAttachments);
+          }
+        },
+        beforeOpen: (details) async {
+          await customStatement('PRAGMA foreign_keys = ON;');
+          await _createIndexes();
         },
       );
 
@@ -345,6 +363,73 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
             )
           : null,
     );
+  }
+
+  Future<int> insertNoteAttachment({
+    required int noteId,
+    required String filePath,
+    String? mimeType,
+    String kind = 'image',
+  }) {
+    return into(dbNoteAttachments).insert(
+      DbNoteAttachmentsCompanion.insert(
+        noteId: noteId,
+        filePath: filePath,
+        createdAt: DateTime.now(),
+        mimeType: Value(mimeType),
+        kind: Value(kind),
+      ),
+    );
+  }
+
+  Future<List<NoteAttachmentRow>> listNoteAttachments(int noteId) async {
+    final rows = await (select(dbNoteAttachments)
+          ..where((t) => t.noteId.equals(noteId))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+
+    return rows
+        .map(
+          (r) => NoteAttachmentRow(
+            id: r.id,
+            noteId: r.noteId,
+            filePath: r.filePath,
+            mimeType: r.mimeType,
+            kind: r.kind,
+            createdAt: r.createdAt,
+          ),
+        )
+        .toList();
+  }
+
+  Future<NoteAttachmentRow?> getNoteAttachmentById(int id) async {
+    final row = await (select(dbNoteAttachments)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+
+    if (row == null) return null;
+
+    return NoteAttachmentRow(
+      id: row.id,
+      noteId: row.noteId,
+      filePath: row.filePath,
+      mimeType: row.mimeType,
+      kind: row.kind,
+      createdAt: row.createdAt,
+    );
+  }
+
+  Future<void> deleteNoteAttachment(int id) {
+    return (delete(dbNoteAttachments)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<NoteAttachmentRow?> getPanelAttachment(int panelId) async {
+    final panel = await (select(dbFigurePanels)..where((t) => t.id.equals(panelId)))
+        .getSingleOrNull();
+
+    final attachmentId = panel?.sourceAttachmentId;
+    if (attachmentId == null) return null;
+
+    return getNoteAttachmentById(attachmentId);
   }
 
   Future<void> _createIndexes() async {
@@ -361,11 +446,11 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   }) async {
     final now = DateTime.now();
 
-    final maxSortRow = await (selectOnly(dbFigures)
-          ..addColumns([dbFigures.sortOrder.max()]))
+    final maxSortExpr = dbFigures.sortOrder.max();
+    final maxSortRow = await (selectOnly(dbFigures)..addColumns([maxSortExpr]))
         .getSingle();
 
-    final maxSort = maxSortRow.read(dbFigures.sortOrder.max()) ?? 0;
+    final maxSort = maxSortRow.read(maxSortExpr) ?? 0;
 
     return into(dbFigures).insert(
       DbFiguresCompanion.insert(
@@ -382,6 +467,8 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   }
 
   Future<List<FigureRow>> listFigures() async {
+    await _addFigureColumnsIfNeeded();
+
     final figures = await (select(dbFigures)
           ..orderBy([
             (t) => OrderingTerm(expression: t.sortOrder),
@@ -393,12 +480,14 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     final result = <FigureRow>[];
 
     for (final f in figures) {
+      final panelCountExpr = dbFigurePanels.id.count();
       final countRow = await (selectOnly(dbFigurePanels)
-            ..addColumns([dbFigurePanels.id.count()])
+            ..addColumns([panelCountExpr])
             ..where(dbFigurePanels.figureId.equals(f.id)))
           .getSingle();
 
-      final panelCount = countRow.read(dbFigurePanels.id.count()) ?? 0;
+      final panelCount = countRow.read(panelCountExpr) ?? 0;
+
       result.add(
         FigureRow(
           id: f.id,
@@ -414,6 +503,7 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
         ),
       );
     }
+
     return result;
   }
 
@@ -428,12 +518,13 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   }) async {
     final now = DateTime.now();
 
+    final maxSortExpr = dbFigurePanels.sortOrder.max();
     final maxSortRow = await (selectOnly(dbFigurePanels)
-          ..addColumns([dbFigurePanels.sortOrder.max()])
+          ..addColumns([maxSortExpr])
           ..where(dbFigurePanels.figureId.equals(figureId)))
         .getSingle();
 
-    final maxSort = maxSortRow.read(dbFigurePanels.sortOrder.max()) ?? 0;
+    final maxSort = maxSortRow.read(maxSortExpr) ?? 0;
 
     final id = await into(dbFigurePanels).insert(
       DbFigurePanelsCompanion.insert(
@@ -535,12 +626,13 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
 
     if (f == null) return null;
 
+    final panelCountExpr = dbFigurePanels.id.count();
     final countRow = await (selectOnly(dbFigurePanels)
-          ..addColumns([dbFigurePanels.id.count()])
+          ..addColumns([panelCountExpr])
           ..where(dbFigurePanels.figureId.equals(f.id)))
         .getSingle();
 
-    final panelCount = countRow.read(dbFigurePanels.id.count()) ?? 0;
+    final panelCount = countRow.read(panelCountExpr) ?? 0;
 
     return FigureRow(
       id: f.id,
@@ -603,8 +695,6 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
       );
     });
   }
-  
-
 
   Future<String> getNextPanelLabel(int figureId) async {
     final panels = await listFigurePanels(figureId);
@@ -630,11 +720,12 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
       }
       if (!await _hasColumn('db_figures', 'caption')) {
         await customStatement(
-          "ALTER TABLE db_figures ADD COLUMN caption TEXT;",
+          'ALTER TABLE db_figures ADD COLUMN caption TEXT;',
         );
       }
     }
   }
+
   // =====================================================
   // Cursor helpers
   // =====================================================
@@ -982,23 +1073,15 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     ''');
 
     if (hasReagents) {
-      final reagentHasCatalog = await _hasColumn(
-        'db_note_reagents_old',
-        'catalog_number',
-      );
-      final reagentHasLot = await _hasColumn(
-        'db_note_reagents_old',
-        'lot_number',
-      );
-      final reagentHasCompany = await _hasColumn(
-        'db_note_reagents_old',
-        'company',
-      );
+      final reagentHasCatalog =
+          await _hasColumn('db_note_reagents_old', 'catalog_number');
+      final reagentHasLot =
+          await _hasColumn('db_note_reagents_old', 'lot_number');
+      final reagentHasCompany =
+          await _hasColumn('db_note_reagents_old', 'company');
       final reagentHasMemo = await _hasColumn('db_note_reagents_old', 'memo');
-      final reagentHasCreatedAt = await _hasColumn(
-        'db_note_reagents_old',
-        'created_at',
-      );
+      final reagentHasCreatedAt =
+          await _hasColumn('db_note_reagents_old', 'created_at');
 
       await customStatement('''
         INSERT INTO db_note_reagents (
@@ -1027,23 +1110,15 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     }
 
     if (hasMaterials) {
-      final materialHasCatalog = await _hasColumn(
-        'db_note_materials_old',
-        'catalog_number',
-      );
-      final materialHasLot = await _hasColumn(
-        'db_note_materials_old',
-        'lot_number',
-      );
-      final materialHasCompany = await _hasColumn(
-        'db_note_materials_old',
-        'company',
-      );
+      final materialHasCatalog =
+          await _hasColumn('db_note_materials_old', 'catalog_number');
+      final materialHasLot =
+          await _hasColumn('db_note_materials_old', 'lot_number');
+      final materialHasCompany =
+          await _hasColumn('db_note_materials_old', 'company');
       final materialHasMemo = await _hasColumn('db_note_materials_old', 'memo');
-      final materialHasCreatedAt = await _hasColumn(
-        'db_note_materials_old',
-        'created_at',
-      );
+      final materialHasCreatedAt =
+          await _hasColumn('db_note_materials_old', 'created_at');
 
       await customStatement('''
         INSERT INTO db_note_materials (
@@ -1073,10 +1148,8 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
 
     if (hasReferences) {
       final refHasMemo = await _hasColumn('db_note_references_old', 'memo');
-      final refHasCreatedAt = await _hasColumn(
-        'db_note_references_old',
-        'created_at',
-      );
+      final refHasCreatedAt =
+          await _hasColumn('db_note_references_old', 'created_at');
 
       await customStatement('''
         INSERT INTO db_note_references (
@@ -1132,6 +1205,9 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
     }
     if (!await _hasTable('db_figure_panels')) {
       await m.createTable(dbFigurePanels);
+    }
+    if (!await _hasTable('db_note_attachments')) {
+      await m.createTable(dbNoteAttachments);
     }
   }
 
@@ -1339,6 +1415,7 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
       await delete(dbNoteReagents).go();
       await delete(dbNoteMaterials).go();
       await delete(dbNoteReferences).go();
+      await delete(dbNoteAttachments).go();
       await delete(dbNotes).go();
 
       await batch((b) {

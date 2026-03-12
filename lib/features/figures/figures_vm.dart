@@ -36,6 +36,8 @@ class FiguresVm extends ChangeNotifier {
             ),
           ),
         );
+    } catch (e) {
+      debugPrint('FiguresVm load error: $e');
     } finally {
       loading = false;
       notifyListeners();
@@ -49,12 +51,16 @@ class FiguresVm extends ChangeNotifier {
     String? description,
     String? project,
   }) async {
-    await _db.insertFigure(
-      title: title,
-      description: description,
-      project: project,
-    );
-    await load();
+    try {
+      await _db.insertFigure(
+        title: title,
+        description: description,
+        project: project,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('createFigure error: $e');
+    }
   }
 
   Future<void> updateFigure({
@@ -63,18 +69,26 @@ class FiguresVm extends ChangeNotifier {
     String? description,
     String? project,
   }) async {
-    await _db.updateFigure(
-      id: id,
-      title: title,
-      description: description,
-      project: project,
-    );
-    await load();
+    try {
+      await _db.updateFigure(
+        id: id,
+        title: title,
+        description: description,
+        project: project,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('updateFigure error: $e');
+    }
   }
 
   Future<void> deleteFigure(int id) async {
-    await _db.deleteFigure(id);
-    await load();
+    try {
+      await _db.deleteFigure(id);
+      await load();
+    } catch (e) {
+      debugPrint('deleteFigure error: $e');
+    }
   }
 }
 
@@ -96,19 +110,21 @@ class FigureDetailVm extends ChangeNotifier {
       final figureRow = await _db.getFigureById(figureId);
       final panelRows = await _db.listFigurePanels(figureId);
 
-      figure = figureRow == null
-          ? null
-          : FigureListItem(
-              id: figureRow.id,
-              title: figureRow.title,
-              description: figureRow.description,
-              project: figureRow.project,
-              layoutType: figureRow.layoutType,
-              caption: figureRow.caption,
-              panelCount: figureRow.panelCount,
-              createdAt: figureRow.createdAt,
-              updatedAt: figureRow.updatedAt,
-            );
+      if (figureRow != null) {
+        figure = FigureListItem(
+          id: figureRow.id,
+          title: figureRow.title,
+          description: figureRow.description,
+          project: figureRow.project,
+          layoutType: figureRow.layoutType,
+          caption: figureRow.caption,
+          panelCount: figureRow.panelCount,
+          createdAt: figureRow.createdAt,
+          updatedAt: figureRow.updatedAt,
+        );
+      } else {
+        figure = null;
+      }
 
       panels
         ..clear()
@@ -129,6 +145,8 @@ class FigureDetailVm extends ChangeNotifier {
             ),
           ),
         );
+    } catch (e) {
+      debugPrint('FigureDetailVm load error: $e');
     } finally {
       loading = false;
       notifyListeners();
@@ -144,15 +162,19 @@ class FigureDetailVm extends ChangeNotifier {
     int? sourceNoteId,
     int? sourceAttachmentId,
   }) async {
-    await _db.insertFigurePanel(
-      figureId: figureId,
-      panelLabel: panelLabel,
-      title: title,
-      caption: caption,
-      sourceNoteId: sourceNoteId,
-      sourceAttachmentId: sourceAttachmentId,
-    );
-    await load();
+    try {
+      await _db.insertFigurePanel(
+        figureId: figureId,
+        panelLabel: panelLabel,
+        title: title,
+        caption: caption,
+        sourceNoteId: sourceNoteId,
+        sourceAttachmentId: sourceAttachmentId,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('createPanel error: $e');
+    }
   }
 
   Future<void> updatePanel({
@@ -162,44 +184,65 @@ class FigureDetailVm extends ChangeNotifier {
     String? caption,
     String status = 'draft',
   }) async {
-    await _db.updateFigurePanel(
-      id: id,
-      panelLabel: panelLabel,
-      title: title,
-      caption: caption,
-      status: status,
-    );
-    await load();
+    try {
+      await _db.updateFigurePanel(
+        id: id,
+        panelLabel: panelLabel,
+        title: title,
+        caption: caption,
+        status: status,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('updatePanel error: $e');
+    }
   }
 
   Future<void> deletePanel(int id) async {
-    await _db.deleteFigurePanel(id);
-    await load();
+    try {
+      await _db.deleteFigurePanel(id);
+      await load();
+    } catch (e) {
+      debugPrint('deletePanel error: $e');
+    }
   }
 
   Future<void> updateLayout(String layoutType) async {
-    await _db.updateFigureLayout(
-      id: figureId,
-      layoutType: layoutType,
-    );
-    await load();
+    try {
+      await _db.updateFigureLayout(
+        id: figureId,
+        layoutType: layoutType,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('updateLayout error: $e');
+    }
   }
 
   Future<void> updateCaption(String? caption) async {
-    await _db.updateFigureCaption(
-      id: figureId,
-      caption: caption,
-    );
-    await load();
+    try {
+      await _db.updateFigureCaption(
+        id: figureId,
+        caption: caption,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('updateCaption error: $e');
+    }
   }
 
   Future<void> reorderPanels(List<int> panelIdsInOrder) async {
-    await _db.reorderFigurePanels(
-      figureId: figureId,
-      panelIdsInOrder: panelIdsInOrder,
-    );
-    await load();
+    try {
+      await _db.reorderFigurePanels(
+        figureId: figureId,
+        panelIdsInOrder: panelIdsInOrder,
+      );
+      await load();
+    } catch (e) {
+      debugPrint('reorderPanels error: $e');
+    }
   }
+
   Future<String> getNextPanelLabel() {
     return _db.getNextPanelLabel(figureId);
   }
