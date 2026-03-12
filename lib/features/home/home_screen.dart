@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,8 @@ import 'package:labnote/features/trash/trash_screen.dart';
 import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/pages/note_detail_page.dart';
 import 'package:labnote/services/image_scan_service.dart';
+import 'package:labnote/utils/notion_date_format.dart';
+import 'package:labnote/utils/note_grouping.dart';
 
 ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   String name = '스캔 시약';
@@ -48,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollCtrl = ScrollController();
   final ImagePicker _picker = ImagePicker();
   final ImageScanService _imageScanService = ImageScanService();
+
+  Timer? _dateRefreshTimer;
 
   bool _inited = false;
   HomeVm? _vm;
@@ -92,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+@override
   void initState() {
     super.initState();
 
@@ -101,6 +107,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _vm = context.read<HomeVm>();
       _scrollCtrl.addListener(_onScroll);
     });
+
+    _dateRefreshTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) {
+        if (!mounted) return;
+        setState(() {});
+      },
+    );
   }
 
   void _onScroll() {
@@ -126,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _dateRefreshTimer?.cancel();
     _scrollCtrl.removeListener(_onScroll);
     _scrollCtrl.dispose();
     super.dispose();
@@ -412,10 +427,11 @@ class _HomeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final loading = context.select<HomeVm, bool>((vm) => vm.loading);
     final items = context.select<HomeVm, List<NoteListItem>>((vm) => vm.items);
-    final loadingMore =
-        context.select<HomeVm, bool>((vm) => vm.loadingMore);
+    final loading = context.select<HomeVm, bool>((vm) => vm.loading);
+    final loadingMore = context.select<HomeVm, bool>((vm) => vm.loadingMore);
+
+    final groups = groupNotesByDate(items);
 
     if (loading && items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -430,21 +446,36 @@ class _HomeBody extends StatelessWidget {
       child: ListView.separated(
         controller: scrollCtrl,
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: items.length + (loadingMore ? 1 : 0),
+        itemCount: groups.length + (loadingMore ? 1 : 0),
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (context, index) {
-          if (index >= items.length) {
+          if (index == groups.length) {
             return const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             );
           }
 
-          final item = items[index];
-          return _NoteTile(
-            key: ValueKey(item.id),
-            item: item,
-            messenger: messenger,
+          final group = groups[index];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  group.title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              ...group.items.map(
+                (item) => _NoteTile(
+                  key: ValueKey(item.id),
+                  item: item,
+                  messenger: messenger,
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -535,10 +566,20 @@ class _NoteTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          item.bodyPreview,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item.bodyPreview,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              formatNotionDate(item.updatedAt),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ),
         trailing: IconButton(
           tooltip: item.isPinned ? '고정 해제' : '상단 고정',

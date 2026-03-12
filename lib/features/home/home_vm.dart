@@ -262,9 +262,9 @@ class HomeVm extends ChangeNotifier {
 
   void _sortItemsInMemory() {
     items.sort((a, b) {
-      final pinCompare =
-          (b.isPinned ? 1 : 0).compareTo(a.isPinned ? 1 : 0);
-      if (pinCompare != 0) return pinCompare;
+      if (a.isPinned != b.isPinned) {
+        return a.isPinned ? -1 : 1;
+      }
 
       final updatedCompare = b.updatedAt.compareTo(a.updatedAt);
       if (updatedCompare != 0) return updatedCompare;
