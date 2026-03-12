@@ -7,10 +7,6 @@ import 'data/app_database.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/home_vm.dart';
 import 'pages/note_detail_page.dart';
-
-import 'services/backup_service.dart';
-import 'services/backup_service_impl.dart';
-
 import 'viewmodels/app_settings.dart';
 
 void main() {
@@ -31,9 +27,6 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<AppSettings>(
           create: (_) => AppSettings(),
-        ),
-        Provider<BackupService>(
-          create: (ctx) => BackupServiceImpl(ctx.read<AppDatabase>()),
         ),
         ChangeNotifierProvider<HomeVm>(
           create: (ctx) => HomeVm(ctx.read<AppDatabase>()),
@@ -58,7 +51,7 @@ class MyApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: FlutterQuillLocalizations.supportedLocales,
-            home: HomeScreen(),
+            home: const HomeScreen(),
             onGenerateRoute: (settings) {
               if (settings.name == '/noteDetail') {
                 final noteId = settings.arguments as int;

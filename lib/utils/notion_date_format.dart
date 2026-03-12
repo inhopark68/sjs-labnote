@@ -1,40 +1,24 @@
-String formatNotionDate(DateTime date) {
+String formatNotionDate(DateTime dateTime) {
   final now = DateTime.now();
 
   final today = DateTime(now.year, now.month, now.day);
-  final targetDay = DateTime(date.year, date.month, date.day);
-  final diffDays = targetDay.difference(today).inDays;
+  final targetDay = DateTime(dateTime.year, dateTime.month, dateTime.day);
+  final diff = targetDay.difference(today).inDays;
 
-  String two(int v) => v.toString().padLeft(2, '0');
+  final hh = dateTime.hour.toString().padLeft(2, '0');
+  final mm = dateTime.minute.toString().padLeft(2, '0');
 
-  String time() {
-    return '${two(date.hour)}:${two(date.minute)}';
+  if (diff == 0) {
+    return '오늘 $hh:$mm';
   }
 
-  String weekday(int w) {
-    const map = {
-      1: '월요일',
-      2: '화요일',
-      3: '수요일',
-      4: '목요일',
-      5: '금요일',
-      6: '토요일',
-      7: '일요일',
-    };
-    return map[w]!;
+  if (diff == -1) {
+    return '어제 $hh:$mm';
   }
 
-  if (diffDays == 0) return '오늘 ${time()}';
-  if (diffDays == -1) return '어제 ${time()}';
-  if (diffDays == 1) return '내일 ${time()}';
-
-  if (diffDays.abs() <= 6) {
-    return '${weekday(date.weekday)} ${time()}';
+  if (dateTime.year == now.year) {
+    return '${dateTime.month}월 ${dateTime.day}일 $hh:$mm';
   }
 
-  if (date.year == now.year) {
-    return '${date.month}월 ${date.day}일 ${time()}';
-  }
-
-  return '${date.year}년 ${date.month}월 ${date.day}일 ${time()}';
+  return '${dateTime.year}년 ${dateTime.month}월 ${dateTime.day}일 $hh:$mm';
 }

@@ -1,18 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:labnote/data/app_database.dart';
 import 'package:labnote/models/note_list_item.dart';
-import 'package:labnote/services/backup_service.dart';
 import 'package:labnote/utils/note_text_plain.dart';
 
 class HomeVm extends ChangeNotifier {
-  final AppDatabase _data;
-
   HomeVm(this._data);
+
+  final AppDatabase _data;
 
   bool searchVisible = false;
   String query = '';
@@ -26,11 +23,7 @@ class HomeVm extends ChangeNotifier {
   static const int _pageSize = 20;
 
   Timer? _searchDebounce;
-
-  /// refresh 중복 실행 / 오래된 결과 반영 방지
   int _requestToken = 0;
-
-  /// cursor 기반 다음 페이지 기준값
   _NoteCursor? _nextCursor;
 
   @override
@@ -47,10 +40,602 @@ class HomeVm extends ChangeNotifier {
     await refresh();
   }
 
-  Future<int> insertEmptyAndReturnId() async {
-    final id = await _data.insertNote(title: '', body: '');
+  Future<int> insertPlainNoteAndReturnId() async {
+    final id = await _data.insertNote(
+      title: '',
+      body: '',
+    );
+
     await refresh();
     return id;
+  }
+
+  String _prependAutoMeta({
+    required String experimentTag,
+    required String body,
+  }) {
+    return '''
+  #$experimentTag
+  #Experiment
+
+  $body
+  ''';
+  }
+
+  String _todayString() {
+    final now = DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  Future<int> _insertTemplateNote({
+    required String title,
+    required String body,
+  }) async {
+    final id = await _data.insertNote(
+      title: title,
+      body: body,
+    );
+
+    await refresh();
+    return id;
+  }
+
+  Future<int> insertWesternBlotNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'WesternBlot',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target protein:
+  - comparison group:
+  - hypothesis:
+
+  샘플 정보
+  - sample:
+  - cell/tissue type:
+  - treatment condition:
+  - collection time:
+  - biological replicate:
+  - technical replicate:
+
+  단백질 추출 / 정량
+  - lysis buffer:
+  - inhibitor:
+  - quantification method:
+  - protein concentration:
+  - loading amount (ug):
+  - sample buffer:
+  - heating condition:
+
+  Gel / Transfer
+  - gel %:
+  - running buffer:
+  - running condition:
+  - membrane type:
+  - transfer buffer:
+  - transfer condition:
+  - transfer temperature:
+
+  Blocking
+  - blocking buffer:
+  - blocking time:
+  - blocking temperature:
+
+  1차 항체
+  - antibody:
+  - company:
+  - catalog no:
+  - host:
+  - dilution:
+  - buffer:
+  - incubation time:
+  - incubation temperature:
+
+  세척
+  - wash buffer:
+  - wash count:
+  - wash time:
+
+  2차 항체
+  - antibody:
+  - company:
+  - dilution:
+  - buffer:
+  - incubation time:
+  - incubation temperature:
+
+  Lane 배치
+  | Lane | Sample | Amount(ug) | Note |
+  |------|--------|------------|------|
+  | 1 | Marker |  |  |
+  | 2 | Control |  |  |
+  | 3 | Sample 1 |  |  |
+  | 4 | Sample 2 |  |  |
+  | 5 | Sample 3 |  |  |
+  | 6 | Positive control |  |  |
+  | 7 | Negative control |  |  |
+
+  검출
+  - detection reagent:
+  - imaging system:
+  - exposure time:
+  - file name:
+
+  결과
+  - expected size (kDa):
+  - observed band:
+  - band intensity:
+  - loading control:
+  - background:
+  - nonspecific bands:
+
+  정량 분석
+  - software:
+  - normalization:
+  - relative expression:
+
+  해석
+  - 
+
+  문제점 / 트러블슈팅
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'Western Blot',
+      body: template,
+    );
+  }
+
+  Future<int> insertRtPcrNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'RTPCR',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target gene:
+  - comparison group:
+  - hypothesis:
+
+  샘플 정보
+  - sample:
+  - cell/tissue type:
+  - treatment condition:
+  - collection time:
+  - biological replicate:
+  - technical replicate:
+
+  RNA 추출
+  - extraction method:
+  - kit/reagent:
+  - RNA concentration:
+  - A260/A280:
+  - RNA quality:
+
+  cDNA 합성
+  - reverse transcription kit:
+  - input RNA amount:
+  - reaction volume:
+  - reaction condition:
+
+  Primer 정보
+  - target primer:
+  - forward sequence:
+  - reverse sequence:
+  - housekeeping gene:
+  - primer company:
+
+  qPCR 조건
+  - master mix:
+  - machine:
+  - total volume:
+  - annealing temperature:
+  - cycle condition:
+
+  Plate 배치
+  | Well | Sample | Target | Replicate | Note |
+  |------|--------|--------|-----------|------|
+  | A1 | Control |  | 1 |  |
+  | A2 | Control |  | 2 |  |
+  | A3 | Sample 1 |  | 1 |  |
+  | A4 | Sample 1 |  | 2 |  |
+  | A5 | Sample 2 |  | 1 |  |
+  | A6 | Sample 2 |  | 2 |  |
+  | A7 | NTC |  | 1 |  |
+  | A8 | Positive control |  | 1 |  |
+
+  결과
+  - Ct(target):
+  - Ct(reference):
+  - delta Ct:
+  - delta delta Ct:
+  - relative expression:
+
+  해석
+  - 
+
+  문제점 / 트러블슈팅
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'RT-PCR',
+      body: template,
+    );
+  }
+
+  Future<int> insertIfNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'IF',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target:
+  - sample:
+  - hypothesis:
+
+  샘플 정보
+  - cell/tissue:
+  - seeding density:
+  - treatment:
+  - fixation time:
+
+  고정 / 투과화 / blocking
+  - fixative:
+  - fixation time:
+  - permeabilization buffer:
+  - permeabilization time:
+  - blocking buffer:
+  - blocking time:
+
+  1차 항체
+  - antibody:
+  - company:
+  - catalog no:
+  - host:
+  - dilution:
+  - incubation time:
+  - incubation temperature:
+
+  2차 항체
+  - antibody:
+  - fluorophore:
+  - company:
+  - dilution:
+  - incubation time:
+  - light protection:
+
+  핵 염색 / mounting
+  - nuclear stain:
+  - mounting medium:
+
+  이미징
+  - microscope:
+  - objective:
+  - exposure:
+  - channel:
+  - file name:
+
+  결과
+  - signal location:
+  - signal intensity:
+  - background:
+  - nonspecific staining:
+  - merged image summary:
+
+  해석
+  - 
+
+  문제점 / 트러블슈팅
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'IF',
+      body: template,
+    );
+  }
+
+  Future<int> insertIhcNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'IHC',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target:
+  - tissue:
+  - hypothesis:
+
+  샘플 정보
+  - tissue type:
+  - block/sample id:
+  - section thickness:
+  - slide count:
+
+  전처리
+  - deparaffinization:
+  - rehydration:
+  - antigen retrieval buffer:
+  - antigen retrieval condition:
+  - endogenous peroxidase blocking:
+
+  Blocking
+  - blocking reagent:
+  - blocking time:
+
+  1차 항체
+  - antibody:
+  - company:
+  - catalog no:
+  - host:
+  - dilution:
+  - incubation time:
+  - incubation temperature:
+
+  2차 항체 / 검출
+  - secondary antibody:
+  - detection system:
+  - chromogen:
+  - reaction time:
+
+  Counterstain / Mounting
+  - counterstain:
+  - dehydration:
+  - mounting medium:
+
+  이미징
+  - microscope/scanner:
+  - magnification:
+  - file name:
+
+  결과
+  - staining location:
+  - staining intensity:
+  - positive area:
+  - background:
+  - nonspecific staining:
+
+  해석
+  - 
+
+  문제점 / 트러블슈팅
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'IHC',
+      body: template,
+    );
+  }
+
+  Future<int> insertElisaNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'ELISA',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target protein:
+  - hypothesis:
+
+  샘플 정보
+  - sample type:
+  - treatment:
+  - replicate:
+
+  Plate 정보
+  - plate type:
+  - coating antibody:
+  - blocking buffer:
+
+  샘플 처리
+  - sample dilution:
+  - incubation time:
+
+  Detection antibody
+  - antibody:
+  - company:
+  - dilution:
+
+  Substrate
+  - substrate type:
+  - reaction time:
+
+  Plate reader
+  - wavelength:
+
+  Plate 배치
+  | Well | Content | Dilution | Replicate | Note |
+  |------|---------|----------|-----------|------|
+  | A1 | Blank |  | 1 |  |
+  | A2 | Standard 1 |  | 1 |  |
+  | A3 | Standard 2 |  | 1 |  |
+  | A4 | Standard 3 |  | 1 |  |
+  | A5 | Sample 1 |  | 1 |  |
+  | A6 | Sample 1 |  | 2 |  |
+  | A7 | Sample 2 |  | 1 |  |
+  | A8 | Sample 2 |  | 2 |  |
+
+  결과
+  - OD values:
+  - standard curve:
+  - concentration calculation:
+
+  해석
+  - 
+
+  문제점
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'ELISA',
+      body: template,
+    );
+  }
+
+  Future<int> insertFacsNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'FACS',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  실험 목적
+  - target marker:
+  - hypothesis:
+
+  샘플 정보
+  - cell type:
+  - treatment condition:
+  - cell count:
+
+  Staining
+  - antibody:
+  - fluorophore:
+  - company:
+  - dilution:
+
+  Controls
+  - unstained control
+  - single stain control
+  - FMO control
+
+  Instrument
+  - machine:
+  - laser configuration:
+
+  Acquisition
+  - events collected:
+
+  Analysis
+  - gating strategy:
+  - population percentage:
+
+  결과
+  - 
+
+  해석
+  - 
+
+  문제점
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'FACS',
+      body: template,
+    );
+  }
+
+  Future<int> insertCellCultureNoteAndReturnId() {
+    final template = _prependAutoMeta(
+      experimentTag: 'CellCulture',
+      body: '''
+  실험 날짜
+  - ${_todayString()}
+
+  실험자
+  - 
+
+  세포 정보
+  - cell line:
+  - passage number:
+  - source:
+
+  배양 조건
+  - medium:
+  - serum:
+  - antibiotics:
+
+  배양 환경
+  - CO2:
+  - temperature:
+  - humidity:
+
+  Seeding
+  - seeding density:
+  - plate type:
+
+  처리 조건
+  - treatment:
+  - concentration:
+  - treatment time:
+
+  관찰
+  - morphology:
+  - confluency:
+  - contamination 여부:
+
+  결과
+  - 
+
+  문제점
+  - 
+
+  다음 계획
+  - 
+  ''',
+    );
+
+    return _insertTemplateNote(
+      title: 'Cell Culture',
+      body: template,
+    );
   }
 
   void toggleSearch() {
@@ -65,10 +650,10 @@ class HomeVm extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setQuery(String v) {
-    if (query == v) return;
+  void setQuery(String value) {
+    if (query == value) return;
 
-    query = v;
+    query = value;
     notifyListeners();
 
     _searchDebounce?.cancel();
@@ -235,6 +820,19 @@ class HomeVm extends ChangeNotifier {
     }
   }
 
+  Future<int> createNoteFromScannedText({
+    required String body,
+    String title = '스캔 가져오기',
+  }) async {
+    final id = await _data.insertNote(
+      title: title,
+      body: body,
+    );
+
+    await refresh();
+    return id;
+  }
+
   Future<List<NoteListRow>> _fetchFirstPage() {
     return _data.listNoteRowsFirstPage(
       query: query.trim(),
@@ -273,17 +871,17 @@ class HomeVm extends ChangeNotifier {
     });
   }
 
-  NoteListItem _toListItem(NoteListRow n) {
-    final project = n.project?.trim();
+  NoteListItem _toListItem(NoteListRow row) {
+    final project = row.project?.trim();
 
     return NoteListItem(
-      id: n.id,
-      title: noteStoredTextToPlain(n.title),
-      bodyPreview: noteStoredTextToPlain(n.preview),
-      createdAt: n.createdAt,
-      updatedAt: n.updatedAt,
-      isPinned: n.isPinned,
-      isLocked: n.isLocked,
+      id: row.id,
+      title: noteStoredTextToPlain(row.title),
+      bodyPreview: noteStoredTextToPlain(row.preview),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      isPinned: row.isPinned,
+      isLocked: row.isLocked,
       attachmentCount: 0,
       reagentCount: 0,
       cellCount: 0,
@@ -295,148 +893,16 @@ class HomeVm extends ChangeNotifier {
       ],
     );
   }
-
-  Future<void> exportBackupPlain(BuildContext context) async {
-    final svc = context.read<BackupService>();
-    await svc.exportBackup(password: null);
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('백업 내보내기 완료')),
-    );
-  }
-
-  Future<void> importBackupWithPreRestore(BuildContext context) async {
-    final svc = context.read<BackupService>();
-
-    final raw = await svc.pickRawBackupText();
-    if (raw == null) return;
-
-    bool isEncrypted = false;
-    try {
-      final decoded = jsonDecode(raw);
-      isEncrypted =
-          decoded is Map<String, dynamic> && decoded['encrypted'] == true;
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('백업 파일 형식이 올바르지 않습니다.')),
-      );
-      return;
-    }
-
-    String? importPw;
-    if (isEncrypted) {
-      importPw = await _askPassword(context, title: '백업 비밀번호 입력');
-      if (importPw == null || importPw.isEmpty) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('암호화된 백업은 비밀번호가 필요합니다.')),
-        );
-        return;
-      }
-    }
-
-    final prePw = await _askPassword(
-      context,
-      title: '복원 전 자동 백업(PRE-RESTORE) 비밀번호 입력',
-    );
-    if (prePw == null || prePw.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PRE-RESTORE 자동 백업을 위해 비밀번호가 필요합니다.'),
-        ),
-      );
-      return;
-    }
-
-    await svc.safeImportWithPreBackup(
-      rawBackupText: raw,
-      preBackupPassword: prePw,
-      importPassword: importPw,
-    );
-
-    await refresh();
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('백업 복원 완료')),
-    );
-  }
-
-  Future<String?> _askPassword(
-    BuildContext context, {
-    required String title,
-  }) async {
-    final ctrl = TextEditingController();
-    bool obscure = true;
-
-    try {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setLocal) => AlertDialog(
-            title: Text(title),
-            content: TextField(
-              controller: ctrl,
-              obscureText: obscure,
-              decoration: InputDecoration(
-                labelText: '비밀번호',
-                suffixIcon: IconButton(
-                  tooltip: obscure ? '비밀번호 보기' : '비밀번호 숨기기',
-                  icon: Icon(
-                    obscure ? Icons.visibility : Icons.visibility_off,
-                  ),
-                  onPressed: () => setLocal(() => obscure = !obscure),
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('취소'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('확인'),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (ok != true) return null;
-
-      final text = ctrl.text.trim();
-      return text.isEmpty ? null : text;
-    } finally {
-      ctrl.dispose();
-    }
-  }
-
-  Future<int> createNoteFromScannedText({
-    required String body,
-    String title = '스캔 가져오기',
-  }) async {
-    final id = await _data.insertNote(
-      title: title,
-      body: body,
-    );
-
-    await refresh();
-    return id;
-  }
 }
 
 class _NoteCursor {
-  final int id;
-  final DateTime updatedAt;
-  final bool isPinned;
-
   const _NoteCursor({
     required this.id,
     required this.updatedAt,
     required this.isPinned,
   });
+
+  final int id;
+  final DateTime updatedAt;
+  final bool isPinned;
 }

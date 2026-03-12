@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +22,7 @@ ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   if ((result.parsed.company?.isNotEmpty ?? false) &&
       (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
     name = '${result.parsed.company} ${result.parsed.catalogNumber}';
-  } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+  } else if (result.parsed.catalogNumber?.isNotEmpty ?? false) {
     name = '시약 ${result.parsed.catalogNumber}';
   } else if (result.text.trim().isNotEmpty) {
     final firstLine = result.text.trim().split('\n').first.trim();
@@ -39,6 +40,20 @@ ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   );
 }
 
+enum NewNoteType {
+  plain,
+  experiment,
+}
+
+enum ExperimentTemplateType {
+  westernBlot,
+  rtPcr,
+  ifStaining,
+  ihc,
+  elisa,
+  facs,
+  cellCulture,
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -63,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if ((result.parsed.company?.isNotEmpty ?? false) &&
         (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
       title = '${result.parsed.company} ${result.parsed.catalogNumber}';
-    } else if ((result.parsed.catalogNumber?.isNotEmpty ?? false)) {
+    } else if (result.parsed.catalogNumber?.isNotEmpty ?? false) {
       title = '시약 ${result.parsed.catalogNumber}';
     } else if (result.codes.isNotEmpty) {
       final first = result.codes.first;
@@ -96,14 +111,96 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<NewNoteType?> _pickNewNoteType() async {
+    return showModalBottomSheet<NewNoteType>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.note_alt_outlined),
+              title: const Text('일반노트'),
+              subtitle: const Text('빈 노트로 시작'),
+              onTap: () => Navigator.pop(ctx, NewNoteType.plain),
+            ),
+            ListTile(
+              leading: const Icon(Icons.science_outlined),
+              title: const Text('실험노트'),
+              subtitle: const Text('실험 종류를 선택해서 템플릿 생성'),
+              onTap: () => Navigator.pop(ctx, NewNoteType.experiment),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<ExperimentTemplateType?> _pickExperimentTemplateType() async {
+    return showModalBottomSheet<ExperimentTemplateType>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.biotech_outlined),
+              title: const Text('Western Blot'),
+              subtitle: const Text('WB 실험 기록 템플릿'),
+              onTap: () =>
+                  Navigator.pop(ctx, ExperimentTemplateType.westernBlot),
+            ),
+            ListTile(
+              leading: const Icon(Icons.science),
+              title: const Text('RT-PCR'),
+              subtitle: const Text('RNA / cDNA / Ct 기록 템플릿'),
+              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.rtPcr),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('IF'),
+              subtitle: const Text('Immunofluorescence 템플릿'),
+              onTap: () =>
+                  Navigator.pop(ctx, ExperimentTemplateType.ifStaining),
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_hospital_outlined),
+              title: const Text('IHC'),
+              subtitle: const Text('Immunohistochemistry 템플릿'),
+              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.ihc),
+            ),
+            ListTile(
+              leading: const Icon(Icons.science_outlined),
+              title: const Text('ELISA'),
+              subtitle: const Text('ELISA 실험 기록 템플릿'),
+              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.elisa),
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.scatter_plot_outlined),
+              title: const Text('FACS'),
+              subtitle: const Text('Flow cytometry 분석 템플릿'),
+              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.facs),
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.biotech),
+              title: const Text('Cell Culture'),
+              subtitle: const Text('세포 배양 기록 템플릿'),
+              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.cellCulture),
+            ),            
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
-@override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-
       _vm = context.read<HomeVm>();
       _scrollCtrl.addListener(_onScroll);
     });
@@ -190,7 +287,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final noteId = await vm.createNoteFromScannedText(
           title: title,
-          body: dialogResult.combinedText.trim(),
+          body: '''
+실험 목적
+- 
+
+실험 방법
+- 
+
+실험 내용
+${dialogResult.combinedText.trim()}
+''',
         );
 
         if (!mounted) return;
@@ -242,6 +348,68 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _createNewNote() async {
+    try {
+      final noteType = await _pickNewNoteType();
+      if (noteType == null) return;
+
+      final vm = context.read<HomeVm>();
+      late final int id;
+
+      if (noteType == NewNoteType.plain) {
+        id = await vm.insertPlainNoteAndReturnId();
+      } else {
+        final experimentType = await _pickExperimentTemplateType();
+        if (experimentType == null) return;
+
+        switch (experimentType) {
+          case ExperimentTemplateType.westernBlot:
+            id = await vm.insertWesternBlotNoteAndReturnId();
+            break;
+          case ExperimentTemplateType.rtPcr:
+            id = await vm.insertRtPcrNoteAndReturnId();
+            break;
+          case ExperimentTemplateType.ifStaining:
+            id = await vm.insertIfNoteAndReturnId();
+            break;
+          case ExperimentTemplateType.ihc:
+            id = await vm.insertIhcNoteAndReturnId();
+            break;
+          case ExperimentTemplateType.elisa:
+            id = await vm.insertElisaNoteAndReturnId();
+            break;
+
+          case ExperimentTemplateType.facs:
+            id = await vm.insertFacsNoteAndReturnId();
+            break;
+
+          case ExperimentTemplateType.cellCulture:
+            id = await vm.insertCellCultureNoteAndReturnId();
+            break;
+        }
+      }
+
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteDetailPage(noteId: id),
+        ),
+      );
+
+      if (!mounted) return;
+      await vm.refresh();
+    } catch (e, st) {
+      debugPrint('new note failed: $e\n$st');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('새 노트 열기 실패: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final messenger = ScaffoldMessenger.of(context);
@@ -279,32 +447,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         tooltip: '새 노트',
+        onPressed: _createNewNote,
         child: const Icon(Icons.add),
-        onPressed: () async {
-          try {
-            final id = await context.read<HomeVm>().insertEmptyAndReturnId();
-            debugPrint('new note id=$id (${id.runtimeType})');
-
-            if (!mounted) return;
-
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NoteDetailPage(noteId: id),
-              ),
-            );
-
-            if (!mounted) return;
-            await context.read<HomeVm>().refresh();
-          } catch (e, st) {
-            debugPrint('new note failed: $e\n$st');
-
-            if (!mounted) return;
-            messenger.showSnackBar(
-              SnackBar(content: Text('새 노트 열기 실패: $e')),
-            );
-          }
-        },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: const _LoadMoreHintBar(),
@@ -417,21 +561,25 @@ class _SearchFieldState extends State<_SearchField> {
 }
 
 class _HomeBody extends StatelessWidget {
-  final ScrollController scrollCtrl;
-  final ScaffoldMessengerState messenger;
-
   const _HomeBody({
     required this.scrollCtrl,
     required this.messenger,
   });
 
+  final ScrollController scrollCtrl;
+  final ScaffoldMessengerState messenger;
+
   @override
   Widget build(BuildContext context) {
-    final items = context.select<HomeVm, List<NoteListItem>>((vm) => vm.items);
+    final items = context.select<HomeVm, List<NoteListItem>>(
+      (vm) => List<NoteListItem>.of(vm.items),
+    );
     final loading = context.select<HomeVm, bool>((vm) => vm.loading);
     final loadingMore = context.select<HomeVm, bool>((vm) => vm.loadingMore);
 
-    final groups = groupNotesByDate(items);
+    final pinnedItems = items.where((e) => e.isPinned).toList(growable: false);
+    final normalItems = items.where((e) => !e.isPinned).toList(growable: false);
+    final groups = groupNotesByDate(normalItems);
 
     if (loading && items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -443,55 +591,69 @@ class _HomeBody extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: () => context.read<HomeVm>().refresh(),
-      child: ListView.separated(
+      child: ListView(
         controller: scrollCtrl,
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: groups.length + (loadingMore ? 1 : 0),
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          if (index == groups.length) {
-            return const Padding(
+        children: [
+          if (pinnedItems.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                '상단 고정',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            ...pinnedItems.map(
+              (item) => _NoteTile(
+                key: ValueKey('pinned_${item.id}'),
+                item: item,
+                messenger: messenger,
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+          ...groups.map(
+            (group) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    group.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                ...group.items.map(
+                  (item) => _NoteTile(
+                    key: ValueKey(item.id),
+                    item: item,
+                    messenger: messenger,
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
+            ),
+          ),
+          if (loadingMore)
+            const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          final group = groups[index];
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  group.title,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              ...group.items.map(
-                (item) => _NoteTile(
-                  key: ValueKey(item.id),
-                  item: item,
-                  messenger: messenger,
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+        ],
       ),
     );
   }
 }
 
 class _NoteTile extends StatelessWidget {
-  final NoteListItem item;
-  final ScaffoldMessengerState messenger;
-
   const _NoteTile({
     super.key,
     required this.item,
     required this.messenger,
   });
+
+  final NoteListItem item;
+  final ScaffoldMessengerState messenger;
 
   @override
   Widget build(BuildContext context) {
@@ -623,6 +785,7 @@ class _NoteTile extends StatelessWidget {
     );
   }
 }
+
 class _LoadMoreHintBar extends StatelessWidget {
   const _LoadMoreHintBar();
 
@@ -630,8 +793,7 @@ class _LoadMoreHintBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMore = context.select<HomeVm, bool>((vm) => vm.hasMore);
     final loading = context.select<HomeVm, bool>((vm) => vm.loading);
-    final hasItems =
-        context.select<HomeVm, bool>((vm) => vm.items.isNotEmpty);
+    final hasItems = context.select<HomeVm, bool>((vm) => vm.items.isNotEmpty);
 
     if (!(hasMore && !loading && hasItems)) {
       return const SizedBox.shrink();
