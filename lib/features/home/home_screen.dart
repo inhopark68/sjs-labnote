@@ -731,6 +731,29 @@ class _NoteTile extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (item.tagNames.isNotEmpty) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: item.tagNames.map((tag) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      tag,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 6),
+            ],
             Text(
               item.bodyPreview,
               maxLines: 2,
@@ -743,6 +766,7 @@ class _NoteTile extends StatelessWidget {
             ),
           ],
         ),
+        
         trailing: IconButton(
           tooltip: item.isPinned ? '고정 해제' : '상단 고정',
           icon: Icon(
