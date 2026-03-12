@@ -1690,6 +1690,1029 @@ class DbNoteReferencesCompanion extends UpdateCompanion<DbNoteReference> {
   }
 }
 
+class $DbFiguresTable extends DbFigures
+    with TableInfo<$DbFiguresTable, DbFigure> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DbFiguresTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _projectMeta =
+      const VerificationMeta('project');
+  @override
+  late final GeneratedColumn<String> project = GeneratedColumn<String>(
+      'project', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _layoutTypeMeta =
+      const VerificationMeta('layoutType');
+  @override
+  late final GeneratedColumn<String> layoutType = GeneratedColumn<String>(
+      'layout_type', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('grid_2x2'));
+  static const VerificationMeta _captionMeta =
+      const VerificationMeta('caption');
+  @override
+  late final GeneratedColumn<String> caption = GeneratedColumn<String>(
+      'caption', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        project,
+        title,
+        description,
+        layoutType,
+        caption,
+        sortOrder,
+        createdAt,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'db_figures';
+  @override
+  VerificationContext validateIntegrity(Insertable<DbFigure> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('project')) {
+      context.handle(_projectMeta,
+          project.isAcceptableOrUnknown(data['project']!, _projectMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('layout_type')) {
+      context.handle(
+          _layoutTypeMeta,
+          layoutType.isAcceptableOrUnknown(
+              data['layout_type']!, _layoutTypeMeta));
+    }
+    if (data.containsKey('caption')) {
+      context.handle(_captionMeta,
+          caption.isAcceptableOrUnknown(data['caption']!, _captionMeta));
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbFigure map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbFigure(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      project: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}project']),
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description']),
+      layoutType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}layout_type'])!,
+      caption: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}caption']),
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $DbFiguresTable createAlias(String alias) {
+    return $DbFiguresTable(attachedDatabase, alias);
+  }
+}
+
+class DbFigure extends DataClass implements Insertable<DbFigure> {
+  final int id;
+  final String? project;
+  final String title;
+  final String? description;
+  final String layoutType;
+  final String? caption;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const DbFigure(
+      {required this.id,
+      this.project,
+      required this.title,
+      this.description,
+      required this.layoutType,
+      this.caption,
+      required this.sortOrder,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || project != null) {
+      map['project'] = Variable<String>(project);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['layout_type'] = Variable<String>(layoutType);
+    if (!nullToAbsent || caption != null) {
+      map['caption'] = Variable<String>(caption);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  DbFiguresCompanion toCompanion(bool nullToAbsent) {
+    return DbFiguresCompanion(
+      id: Value(id),
+      project: project == null && nullToAbsent
+          ? const Value.absent()
+          : Value(project),
+      title: Value(title),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      layoutType: Value(layoutType),
+      caption: caption == null && nullToAbsent
+          ? const Value.absent()
+          : Value(caption),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory DbFigure.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbFigure(
+      id: serializer.fromJson<int>(json['id']),
+      project: serializer.fromJson<String?>(json['project']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String?>(json['description']),
+      layoutType: serializer.fromJson<String>(json['layoutType']),
+      caption: serializer.fromJson<String?>(json['caption']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'project': serializer.toJson<String?>(project),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String?>(description),
+      'layoutType': serializer.toJson<String>(layoutType),
+      'caption': serializer.toJson<String?>(caption),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  DbFigure copyWith(
+          {int? id,
+          Value<String?> project = const Value.absent(),
+          String? title,
+          Value<String?> description = const Value.absent(),
+          String? layoutType,
+          Value<String?> caption = const Value.absent(),
+          int? sortOrder,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      DbFigure(
+        id: id ?? this.id,
+        project: project.present ? project.value : this.project,
+        title: title ?? this.title,
+        description: description.present ? description.value : this.description,
+        layoutType: layoutType ?? this.layoutType,
+        caption: caption.present ? caption.value : this.caption,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  DbFigure copyWithCompanion(DbFiguresCompanion data) {
+    return DbFigure(
+      id: data.id.present ? data.id.value : this.id,
+      project: data.project.present ? data.project.value : this.project,
+      title: data.title.present ? data.title.value : this.title,
+      description:
+          data.description.present ? data.description.value : this.description,
+      layoutType:
+          data.layoutType.present ? data.layoutType.value : this.layoutType,
+      caption: data.caption.present ? data.caption.value : this.caption,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbFigure(')
+          ..write('id: $id, ')
+          ..write('project: $project, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('layoutType: $layoutType, ')
+          ..write('caption: $caption, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, project, title, description, layoutType,
+      caption, sortOrder, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbFigure &&
+          other.id == this.id &&
+          other.project == this.project &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.layoutType == this.layoutType &&
+          other.caption == this.caption &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class DbFiguresCompanion extends UpdateCompanion<DbFigure> {
+  final Value<int> id;
+  final Value<String?> project;
+  final Value<String> title;
+  final Value<String?> description;
+  final Value<String> layoutType;
+  final Value<String?> caption;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const DbFiguresCompanion({
+    this.id = const Value.absent(),
+    this.project = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.layoutType = const Value.absent(),
+    this.caption = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  DbFiguresCompanion.insert({
+    this.id = const Value.absent(),
+    this.project = const Value.absent(),
+    required String title,
+    this.description = const Value.absent(),
+    this.layoutType = const Value.absent(),
+    this.caption = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  })  : title = Value(title),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<DbFigure> custom({
+    Expression<int>? id,
+    Expression<String>? project,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<String>? layoutType,
+    Expression<String>? caption,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (project != null) 'project': project,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (layoutType != null) 'layout_type': layoutType,
+      if (caption != null) 'caption': caption,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  DbFiguresCompanion copyWith(
+      {Value<int>? id,
+      Value<String?>? project,
+      Value<String>? title,
+      Value<String?>? description,
+      Value<String>? layoutType,
+      Value<String?>? caption,
+      Value<int>? sortOrder,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
+    return DbFiguresCompanion(
+      id: id ?? this.id,
+      project: project ?? this.project,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      layoutType: layoutType ?? this.layoutType,
+      caption: caption ?? this.caption,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (project.present) {
+      map['project'] = Variable<String>(project.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (layoutType.present) {
+      map['layout_type'] = Variable<String>(layoutType.value);
+    }
+    if (caption.present) {
+      map['caption'] = Variable<String>(caption.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbFiguresCompanion(')
+          ..write('id: $id, ')
+          ..write('project: $project, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('layoutType: $layoutType, ')
+          ..write('caption: $caption, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DbFigurePanelsTable extends DbFigurePanels
+    with TableInfo<$DbFigurePanelsTable, DbFigurePanel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DbFigurePanelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _figureIdMeta =
+      const VerificationMeta('figureId');
+  @override
+  late final GeneratedColumn<int> figureId = GeneratedColumn<int>(
+      'figure_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'REFERENCES db_figures (id) ON DELETE CASCADE'));
+  static const VerificationMeta _panelLabelMeta =
+      const VerificationMeta('panelLabel');
+  @override
+  late final GeneratedColumn<String> panelLabel = GeneratedColumn<String>(
+      'panel_label', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _captionMeta =
+      const VerificationMeta('caption');
+  @override
+  late final GeneratedColumn<String> caption = GeneratedColumn<String>(
+      'caption', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _sourceNoteIdMeta =
+      const VerificationMeta('sourceNoteId');
+  @override
+  late final GeneratedColumn<int> sourceNoteId = GeneratedColumn<int>(
+      'source_note_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _sourceAttachmentIdMeta =
+      const VerificationMeta('sourceAttachmentId');
+  @override
+  late final GeneratedColumn<int> sourceAttachmentId = GeneratedColumn<int>(
+      'source_attachment_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('draft'));
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        figureId,
+        panelLabel,
+        title,
+        caption,
+        sourceNoteId,
+        sourceAttachmentId,
+        status,
+        sortOrder,
+        createdAt,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'db_figure_panels';
+  @override
+  VerificationContext validateIntegrity(Insertable<DbFigurePanel> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('figure_id')) {
+      context.handle(_figureIdMeta,
+          figureId.isAcceptableOrUnknown(data['figure_id']!, _figureIdMeta));
+    } else if (isInserting) {
+      context.missing(_figureIdMeta);
+    }
+    if (data.containsKey('panel_label')) {
+      context.handle(
+          _panelLabelMeta,
+          panelLabel.isAcceptableOrUnknown(
+              data['panel_label']!, _panelLabelMeta));
+    } else if (isInserting) {
+      context.missing(_panelLabelMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    }
+    if (data.containsKey('caption')) {
+      context.handle(_captionMeta,
+          caption.isAcceptableOrUnknown(data['caption']!, _captionMeta));
+    }
+    if (data.containsKey('source_note_id')) {
+      context.handle(
+          _sourceNoteIdMeta,
+          sourceNoteId.isAcceptableOrUnknown(
+              data['source_note_id']!, _sourceNoteIdMeta));
+    }
+    if (data.containsKey('source_attachment_id')) {
+      context.handle(
+          _sourceAttachmentIdMeta,
+          sourceAttachmentId.isAcceptableOrUnknown(
+              data['source_attachment_id']!, _sourceAttachmentIdMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbFigurePanel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbFigurePanel(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      figureId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}figure_id'])!,
+      panelLabel: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}panel_label'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title']),
+      caption: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}caption']),
+      sourceNoteId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}source_note_id']),
+      sourceAttachmentId: attachedDatabase.typeMapping.read(
+          DriftSqlType.int, data['${effectivePrefix}source_attachment_id']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $DbFigurePanelsTable createAlias(String alias) {
+    return $DbFigurePanelsTable(attachedDatabase, alias);
+  }
+}
+
+class DbFigurePanel extends DataClass implements Insertable<DbFigurePanel> {
+  final int id;
+  final int figureId;
+  final String panelLabel;
+  final String? title;
+  final String? caption;
+  final int? sourceNoteId;
+  final int? sourceAttachmentId;
+  final String status;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const DbFigurePanel(
+      {required this.id,
+      required this.figureId,
+      required this.panelLabel,
+      this.title,
+      this.caption,
+      this.sourceNoteId,
+      this.sourceAttachmentId,
+      required this.status,
+      required this.sortOrder,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['figure_id'] = Variable<int>(figureId);
+    map['panel_label'] = Variable<String>(panelLabel);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || caption != null) {
+      map['caption'] = Variable<String>(caption);
+    }
+    if (!nullToAbsent || sourceNoteId != null) {
+      map['source_note_id'] = Variable<int>(sourceNoteId);
+    }
+    if (!nullToAbsent || sourceAttachmentId != null) {
+      map['source_attachment_id'] = Variable<int>(sourceAttachmentId);
+    }
+    map['status'] = Variable<String>(status);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  DbFigurePanelsCompanion toCompanion(bool nullToAbsent) {
+    return DbFigurePanelsCompanion(
+      id: Value(id),
+      figureId: Value(figureId),
+      panelLabel: Value(panelLabel),
+      title:
+          title == null && nullToAbsent ? const Value.absent() : Value(title),
+      caption: caption == null && nullToAbsent
+          ? const Value.absent()
+          : Value(caption),
+      sourceNoteId: sourceNoteId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceNoteId),
+      sourceAttachmentId: sourceAttachmentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceAttachmentId),
+      status: Value(status),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory DbFigurePanel.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbFigurePanel(
+      id: serializer.fromJson<int>(json['id']),
+      figureId: serializer.fromJson<int>(json['figureId']),
+      panelLabel: serializer.fromJson<String>(json['panelLabel']),
+      title: serializer.fromJson<String?>(json['title']),
+      caption: serializer.fromJson<String?>(json['caption']),
+      sourceNoteId: serializer.fromJson<int?>(json['sourceNoteId']),
+      sourceAttachmentId: serializer.fromJson<int?>(json['sourceAttachmentId']),
+      status: serializer.fromJson<String>(json['status']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'figureId': serializer.toJson<int>(figureId),
+      'panelLabel': serializer.toJson<String>(panelLabel),
+      'title': serializer.toJson<String?>(title),
+      'caption': serializer.toJson<String?>(caption),
+      'sourceNoteId': serializer.toJson<int?>(sourceNoteId),
+      'sourceAttachmentId': serializer.toJson<int?>(sourceAttachmentId),
+      'status': serializer.toJson<String>(status),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  DbFigurePanel copyWith(
+          {int? id,
+          int? figureId,
+          String? panelLabel,
+          Value<String?> title = const Value.absent(),
+          Value<String?> caption = const Value.absent(),
+          Value<int?> sourceNoteId = const Value.absent(),
+          Value<int?> sourceAttachmentId = const Value.absent(),
+          String? status,
+          int? sortOrder,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      DbFigurePanel(
+        id: id ?? this.id,
+        figureId: figureId ?? this.figureId,
+        panelLabel: panelLabel ?? this.panelLabel,
+        title: title.present ? title.value : this.title,
+        caption: caption.present ? caption.value : this.caption,
+        sourceNoteId:
+            sourceNoteId.present ? sourceNoteId.value : this.sourceNoteId,
+        sourceAttachmentId: sourceAttachmentId.present
+            ? sourceAttachmentId.value
+            : this.sourceAttachmentId,
+        status: status ?? this.status,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  DbFigurePanel copyWithCompanion(DbFigurePanelsCompanion data) {
+    return DbFigurePanel(
+      id: data.id.present ? data.id.value : this.id,
+      figureId: data.figureId.present ? data.figureId.value : this.figureId,
+      panelLabel:
+          data.panelLabel.present ? data.panelLabel.value : this.panelLabel,
+      title: data.title.present ? data.title.value : this.title,
+      caption: data.caption.present ? data.caption.value : this.caption,
+      sourceNoteId: data.sourceNoteId.present
+          ? data.sourceNoteId.value
+          : this.sourceNoteId,
+      sourceAttachmentId: data.sourceAttachmentId.present
+          ? data.sourceAttachmentId.value
+          : this.sourceAttachmentId,
+      status: data.status.present ? data.status.value : this.status,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbFigurePanel(')
+          ..write('id: $id, ')
+          ..write('figureId: $figureId, ')
+          ..write('panelLabel: $panelLabel, ')
+          ..write('title: $title, ')
+          ..write('caption: $caption, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('sourceAttachmentId: $sourceAttachmentId, ')
+          ..write('status: $status, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      figureId,
+      panelLabel,
+      title,
+      caption,
+      sourceNoteId,
+      sourceAttachmentId,
+      status,
+      sortOrder,
+      createdAt,
+      updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbFigurePanel &&
+          other.id == this.id &&
+          other.figureId == this.figureId &&
+          other.panelLabel == this.panelLabel &&
+          other.title == this.title &&
+          other.caption == this.caption &&
+          other.sourceNoteId == this.sourceNoteId &&
+          other.sourceAttachmentId == this.sourceAttachmentId &&
+          other.status == this.status &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class DbFigurePanelsCompanion extends UpdateCompanion<DbFigurePanel> {
+  final Value<int> id;
+  final Value<int> figureId;
+  final Value<String> panelLabel;
+  final Value<String?> title;
+  final Value<String?> caption;
+  final Value<int?> sourceNoteId;
+  final Value<int?> sourceAttachmentId;
+  final Value<String> status;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const DbFigurePanelsCompanion({
+    this.id = const Value.absent(),
+    this.figureId = const Value.absent(),
+    this.panelLabel = const Value.absent(),
+    this.title = const Value.absent(),
+    this.caption = const Value.absent(),
+    this.sourceNoteId = const Value.absent(),
+    this.sourceAttachmentId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  DbFigurePanelsCompanion.insert({
+    this.id = const Value.absent(),
+    required int figureId,
+    required String panelLabel,
+    this.title = const Value.absent(),
+    this.caption = const Value.absent(),
+    this.sourceNoteId = const Value.absent(),
+    this.sourceAttachmentId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  })  : figureId = Value(figureId),
+        panelLabel = Value(panelLabel),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<DbFigurePanel> custom({
+    Expression<int>? id,
+    Expression<int>? figureId,
+    Expression<String>? panelLabel,
+    Expression<String>? title,
+    Expression<String>? caption,
+    Expression<int>? sourceNoteId,
+    Expression<int>? sourceAttachmentId,
+    Expression<String>? status,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (figureId != null) 'figure_id': figureId,
+      if (panelLabel != null) 'panel_label': panelLabel,
+      if (title != null) 'title': title,
+      if (caption != null) 'caption': caption,
+      if (sourceNoteId != null) 'source_note_id': sourceNoteId,
+      if (sourceAttachmentId != null)
+        'source_attachment_id': sourceAttachmentId,
+      if (status != null) 'status': status,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  DbFigurePanelsCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? figureId,
+      Value<String>? panelLabel,
+      Value<String?>? title,
+      Value<String?>? caption,
+      Value<int?>? sourceNoteId,
+      Value<int?>? sourceAttachmentId,
+      Value<String>? status,
+      Value<int>? sortOrder,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
+    return DbFigurePanelsCompanion(
+      id: id ?? this.id,
+      figureId: figureId ?? this.figureId,
+      panelLabel: panelLabel ?? this.panelLabel,
+      title: title ?? this.title,
+      caption: caption ?? this.caption,
+      sourceNoteId: sourceNoteId ?? this.sourceNoteId,
+      sourceAttachmentId: sourceAttachmentId ?? this.sourceAttachmentId,
+      status: status ?? this.status,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (figureId.present) {
+      map['figure_id'] = Variable<int>(figureId.value);
+    }
+    if (panelLabel.present) {
+      map['panel_label'] = Variable<String>(panelLabel.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (caption.present) {
+      map['caption'] = Variable<String>(caption.value);
+    }
+    if (sourceNoteId.present) {
+      map['source_note_id'] = Variable<int>(sourceNoteId.value);
+    }
+    if (sourceAttachmentId.present) {
+      map['source_attachment_id'] = Variable<int>(sourceAttachmentId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbFigurePanelsCompanion(')
+          ..write('id: $id, ')
+          ..write('figureId: $figureId, ')
+          ..write('panelLabel: $panelLabel, ')
+          ..write('title: $title, ')
+          ..write('caption: $caption, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('sourceAttachmentId: $sourceAttachmentId, ')
+          ..write('status: $status, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1699,12 +2722,32 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $DbNoteMaterialsTable(this);
   late final $DbNoteReferencesTable dbNoteReferences =
       $DbNoteReferencesTable(this);
+  late final $DbFiguresTable dbFigures = $DbFiguresTable(this);
+  late final $DbFigurePanelsTable dbFigurePanels = $DbFigurePanelsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [dbNotes, dbNoteReagents, dbNoteMaterials, dbNoteReferences];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        dbNotes,
+        dbNoteReagents,
+        dbNoteMaterials,
+        dbNoteReferences,
+        dbFigures,
+        dbFigurePanels
+      ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
+        [
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('db_figures',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('db_figure_panels', kind: UpdateKind.delete),
+            ],
+          ),
+        ],
+      );
 }
 
 typedef $$DbNotesTableCreateCompanionBuilder = DbNotesCompanion Function({
@@ -2570,6 +3613,679 @@ typedef $$DbNoteReferencesTableProcessedTableManager = ProcessedTableManager<
     ),
     DbNoteReference,
     PrefetchHooks Function()>;
+typedef $$DbFiguresTableCreateCompanionBuilder = DbFiguresCompanion Function({
+  Value<int> id,
+  Value<String?> project,
+  required String title,
+  Value<String?> description,
+  Value<String> layoutType,
+  Value<String?> caption,
+  Value<int> sortOrder,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+});
+typedef $$DbFiguresTableUpdateCompanionBuilder = DbFiguresCompanion Function({
+  Value<int> id,
+  Value<String?> project,
+  Value<String> title,
+  Value<String?> description,
+  Value<String> layoutType,
+  Value<String?> caption,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+final class $$DbFiguresTableReferences
+    extends BaseReferences<_$AppDatabase, $DbFiguresTable, DbFigure> {
+  $$DbFiguresTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$DbFigurePanelsTable, List<DbFigurePanel>>
+      _dbFigurePanelsRefsTable(_$AppDatabase db) =>
+          MultiTypedResultKey.fromTable(db.dbFigurePanels,
+              aliasName: $_aliasNameGenerator(
+                  db.dbFigures.id, db.dbFigurePanels.figureId));
+
+  $$DbFigurePanelsTableProcessedTableManager get dbFigurePanelsRefs {
+    final manager = $$DbFigurePanelsTableTableManager($_db, $_db.dbFigurePanels)
+        .filter((f) => f.figureId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_dbFigurePanelsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+}
+
+class $$DbFiguresTableFilterComposer
+    extends Composer<_$AppDatabase, $DbFiguresTable> {
+  $$DbFiguresTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get project => $composableBuilder(
+      column: $table.project, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get layoutType => $composableBuilder(
+      column: $table.layoutType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get caption => $composableBuilder(
+      column: $table.caption, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  Expression<bool> dbFigurePanelsRefs(
+      Expression<bool> Function($$DbFigurePanelsTableFilterComposer f) f) {
+    final $$DbFigurePanelsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.dbFigurePanels,
+        getReferencedColumn: (t) => t.figureId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$DbFigurePanelsTableFilterComposer(
+              $db: $db,
+              $table: $db.dbFigurePanels,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$DbFiguresTableOrderingComposer
+    extends Composer<_$AppDatabase, $DbFiguresTable> {
+  $$DbFiguresTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get project => $composableBuilder(
+      column: $table.project, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get layoutType => $composableBuilder(
+      column: $table.layoutType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get caption => $composableBuilder(
+      column: $table.caption, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DbFiguresTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DbFiguresTable> {
+  $$DbFiguresTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get project =>
+      $composableBuilder(column: $table.project, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<String> get layoutType => $composableBuilder(
+      column: $table.layoutType, builder: (column) => column);
+
+  GeneratedColumn<String> get caption =>
+      $composableBuilder(column: $table.caption, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> dbFigurePanelsRefs<T extends Object>(
+      Expression<T> Function($$DbFigurePanelsTableAnnotationComposer a) f) {
+    final $$DbFigurePanelsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.dbFigurePanels,
+        getReferencedColumn: (t) => t.figureId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$DbFigurePanelsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.dbFigurePanels,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$DbFiguresTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DbFiguresTable,
+    DbFigure,
+    $$DbFiguresTableFilterComposer,
+    $$DbFiguresTableOrderingComposer,
+    $$DbFiguresTableAnnotationComposer,
+    $$DbFiguresTableCreateCompanionBuilder,
+    $$DbFiguresTableUpdateCompanionBuilder,
+    (DbFigure, $$DbFiguresTableReferences),
+    DbFigure,
+    PrefetchHooks Function({bool dbFigurePanelsRefs})> {
+  $$DbFiguresTableTableManager(_$AppDatabase db, $DbFiguresTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DbFiguresTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DbFiguresTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DbFiguresTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> project = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<String?> description = const Value.absent(),
+            Value<String> layoutType = const Value.absent(),
+            Value<String?> caption = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              DbFiguresCompanion(
+            id: id,
+            project: project,
+            title: title,
+            description: description,
+            layoutType: layoutType,
+            caption: caption,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> project = const Value.absent(),
+            required String title,
+            Value<String?> description = const Value.absent(),
+            Value<String> layoutType = const Value.absent(),
+            Value<String?> caption = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+          }) =>
+              DbFiguresCompanion.insert(
+            id: id,
+            project: project,
+            title: title,
+            description: description,
+            layoutType: layoutType,
+            caption: caption,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$DbFiguresTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({dbFigurePanelsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (dbFigurePanelsRefs) db.dbFigurePanels
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (dbFigurePanelsRefs)
+                    await $_getPrefetchedData<DbFigure, $DbFiguresTable,
+                            DbFigurePanel>(
+                        currentTable: table,
+                        referencedTable: $$DbFiguresTableReferences
+                            ._dbFigurePanelsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$DbFiguresTableReferences(db, table, p0)
+                                .dbFigurePanelsRefs,
+                        referencedItemsForCurrentItem: (item,
+                                referencedItems) =>
+                            referencedItems.where((e) => e.figureId == item.id),
+                        typedResults: items)
+                ];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$DbFiguresTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DbFiguresTable,
+    DbFigure,
+    $$DbFiguresTableFilterComposer,
+    $$DbFiguresTableOrderingComposer,
+    $$DbFiguresTableAnnotationComposer,
+    $$DbFiguresTableCreateCompanionBuilder,
+    $$DbFiguresTableUpdateCompanionBuilder,
+    (DbFigure, $$DbFiguresTableReferences),
+    DbFigure,
+    PrefetchHooks Function({bool dbFigurePanelsRefs})>;
+typedef $$DbFigurePanelsTableCreateCompanionBuilder = DbFigurePanelsCompanion
+    Function({
+  Value<int> id,
+  required int figureId,
+  required String panelLabel,
+  Value<String?> title,
+  Value<String?> caption,
+  Value<int?> sourceNoteId,
+  Value<int?> sourceAttachmentId,
+  Value<String> status,
+  Value<int> sortOrder,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+});
+typedef $$DbFigurePanelsTableUpdateCompanionBuilder = DbFigurePanelsCompanion
+    Function({
+  Value<int> id,
+  Value<int> figureId,
+  Value<String> panelLabel,
+  Value<String?> title,
+  Value<String?> caption,
+  Value<int?> sourceNoteId,
+  Value<int?> sourceAttachmentId,
+  Value<String> status,
+  Value<int> sortOrder,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+final class $$DbFigurePanelsTableReferences
+    extends BaseReferences<_$AppDatabase, $DbFigurePanelsTable, DbFigurePanel> {
+  $$DbFigurePanelsTableReferences(
+      super.$_db, super.$_table, super.$_typedResult);
+
+  static $DbFiguresTable _figureIdTable(_$AppDatabase db) =>
+      db.dbFigures.createAlias(
+          $_aliasNameGenerator(db.dbFigurePanels.figureId, db.dbFigures.id));
+
+  $$DbFiguresTableProcessedTableManager get figureId {
+    final $_column = $_itemColumn<int>('figure_id')!;
+
+    final manager = $$DbFiguresTableTableManager($_db, $_db.dbFigures)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_figureIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$DbFigurePanelsTableFilterComposer
+    extends Composer<_$AppDatabase, $DbFigurePanelsTable> {
+  $$DbFigurePanelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get panelLabel => $composableBuilder(
+      column: $table.panelLabel, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get caption => $composableBuilder(
+      column: $table.caption, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sourceNoteId => $composableBuilder(
+      column: $table.sourceNoteId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sourceAttachmentId => $composableBuilder(
+      column: $table.sourceAttachmentId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  $$DbFiguresTableFilterComposer get figureId {
+    final $$DbFiguresTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.figureId,
+        referencedTable: $db.dbFigures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$DbFiguresTableFilterComposer(
+              $db: $db,
+              $table: $db.dbFigures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$DbFigurePanelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DbFigurePanelsTable> {
+  $$DbFigurePanelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get panelLabel => $composableBuilder(
+      column: $table.panelLabel, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get caption => $composableBuilder(
+      column: $table.caption, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sourceNoteId => $composableBuilder(
+      column: $table.sourceNoteId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sourceAttachmentId => $composableBuilder(
+      column: $table.sourceAttachmentId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  $$DbFiguresTableOrderingComposer get figureId {
+    final $$DbFiguresTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.figureId,
+        referencedTable: $db.dbFigures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$DbFiguresTableOrderingComposer(
+              $db: $db,
+              $table: $db.dbFigures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$DbFigurePanelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DbFigurePanelsTable> {
+  $$DbFigurePanelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get panelLabel => $composableBuilder(
+      column: $table.panelLabel, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get caption =>
+      $composableBuilder(column: $table.caption, builder: (column) => column);
+
+  GeneratedColumn<int> get sourceNoteId => $composableBuilder(
+      column: $table.sourceNoteId, builder: (column) => column);
+
+  GeneratedColumn<int> get sourceAttachmentId => $composableBuilder(
+      column: $table.sourceAttachmentId, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$DbFiguresTableAnnotationComposer get figureId {
+    final $$DbFiguresTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.figureId,
+        referencedTable: $db.dbFigures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$DbFiguresTableAnnotationComposer(
+              $db: $db,
+              $table: $db.dbFigures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$DbFigurePanelsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DbFigurePanelsTable,
+    DbFigurePanel,
+    $$DbFigurePanelsTableFilterComposer,
+    $$DbFigurePanelsTableOrderingComposer,
+    $$DbFigurePanelsTableAnnotationComposer,
+    $$DbFigurePanelsTableCreateCompanionBuilder,
+    $$DbFigurePanelsTableUpdateCompanionBuilder,
+    (DbFigurePanel, $$DbFigurePanelsTableReferences),
+    DbFigurePanel,
+    PrefetchHooks Function({bool figureId})> {
+  $$DbFigurePanelsTableTableManager(
+      _$AppDatabase db, $DbFigurePanelsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DbFigurePanelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DbFigurePanelsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DbFigurePanelsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> figureId = const Value.absent(),
+            Value<String> panelLabel = const Value.absent(),
+            Value<String?> title = const Value.absent(),
+            Value<String?> caption = const Value.absent(),
+            Value<int?> sourceNoteId = const Value.absent(),
+            Value<int?> sourceAttachmentId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              DbFigurePanelsCompanion(
+            id: id,
+            figureId: figureId,
+            panelLabel: panelLabel,
+            title: title,
+            caption: caption,
+            sourceNoteId: sourceNoteId,
+            sourceAttachmentId: sourceAttachmentId,
+            status: status,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int figureId,
+            required String panelLabel,
+            Value<String?> title = const Value.absent(),
+            Value<String?> caption = const Value.absent(),
+            Value<int?> sourceNoteId = const Value.absent(),
+            Value<int?> sourceAttachmentId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+          }) =>
+              DbFigurePanelsCompanion.insert(
+            id: id,
+            figureId: figureId,
+            panelLabel: panelLabel,
+            title: title,
+            caption: caption,
+            sourceNoteId: sourceNoteId,
+            sourceAttachmentId: sourceAttachmentId,
+            status: status,
+            sortOrder: sortOrder,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$DbFigurePanelsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({figureId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (figureId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.figureId,
+                    referencedTable:
+                        $$DbFigurePanelsTableReferences._figureIdTable(db),
+                    referencedColumn:
+                        $$DbFigurePanelsTableReferences._figureIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$DbFigurePanelsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DbFigurePanelsTable,
+    DbFigurePanel,
+    $$DbFigurePanelsTableFilterComposer,
+    $$DbFigurePanelsTableOrderingComposer,
+    $$DbFigurePanelsTableAnnotationComposer,
+    $$DbFigurePanelsTableCreateCompanionBuilder,
+    $$DbFigurePanelsTableUpdateCompanionBuilder,
+    (DbFigurePanel, $$DbFigurePanelsTableReferences),
+    DbFigurePanel,
+    PrefetchHooks Function({bool figureId})>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2582,4 +4298,8 @@ class $AppDatabaseManager {
       $$DbNoteMaterialsTableTableManager(_db, _db.dbNoteMaterials);
   $$DbNoteReferencesTableTableManager get dbNoteReferences =>
       $$DbNoteReferencesTableTableManager(_db, _db.dbNoteReferences);
+  $$DbFiguresTableTableManager get dbFigures =>
+      $$DbFiguresTableTableManager(_db, _db.dbFigures);
+  $$DbFigurePanelsTableTableManager get dbFigurePanels =>
+      $$DbFigurePanelsTableTableManager(_db, _db.dbFigurePanels);
 }

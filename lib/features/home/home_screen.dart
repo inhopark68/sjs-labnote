@@ -15,6 +15,9 @@ import 'package:labnote/pages/note_detail_page.dart';
 import 'package:labnote/services/image_scan_service.dart';
 import 'package:labnote/utils/notion_date_format.dart';
 import 'package:labnote/utils/note_grouping.dart';
+import 'package:labnote/features/figures/figures_screen.dart';
+import 'package:labnote/features/figures/add_to_figure_dialog.dart';
+import 'package:labnote/features/figures/figures_vm.dart';
 
 ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
   String name = '스캔 시약';
@@ -114,23 +117,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<NewNoteType?> _pickNewNoteType() async {
     return showModalBottomSheet<NewNoteType>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.note_alt_outlined),
-              title: const Text('일반노트'),
-              subtitle: const Text('빈 노트로 시작'),
-              onTap: () => Navigator.pop(ctx, NewNoteType.plain),
-            ),
-            ListTile(
-              leading: const Icon(Icons.science_outlined),
-              title: const Text('실험노트'),
-              subtitle: const Text('실험 종류를 선택해서 템플릿 생성'),
-              onTap: () => Navigator.pop(ctx, NewNoteType.experiment),
-            ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.note_alt_outlined),
+                title: const Text('일반노트'),
+                subtitle: const Text('빈 노트로 시작'),
+                onTap: () => Navigator.pop(ctx, NewNoteType.plain),
+              ),
+              ListTile(
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('실험노트'),
+                subtitle: const Text('실험 종류를 선택해서 템플릿 생성'),
+                onTap: () => Navigator.pop(ctx, NewNoteType.experiment),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -139,57 +145,58 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<ExperimentTemplateType?> _pickExperimentTemplateType() async {
     return showModalBottomSheet<ExperimentTemplateType>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.biotech_outlined),
-              title: const Text('Western Blot'),
-              subtitle: const Text('WB 실험 기록 템플릿'),
-              onTap: () =>
-                  Navigator.pop(ctx, ExperimentTemplateType.westernBlot),
-            ),
-            ListTile(
-              leading: const Icon(Icons.science),
-              title: const Text('RT-PCR'),
-              subtitle: const Text('RNA / cDNA / Ct 기록 템플릿'),
-              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.rtPcr),
-            ),
-            ListTile(
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('IF'),
-              subtitle: const Text('Immunofluorescence 템플릿'),
-              onTap: () =>
-                  Navigator.pop(ctx, ExperimentTemplateType.ifStaining),
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_hospital_outlined),
-              title: const Text('IHC'),
-              subtitle: const Text('Immunohistochemistry 템플릿'),
-              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.ihc),
-            ),
-            ListTile(
-              leading: const Icon(Icons.science_outlined),
-              title: const Text('ELISA'),
-              subtitle: const Text('ELISA 실험 기록 템플릿'),
-              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.elisa),
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.scatter_plot_outlined),
-              title: const Text('FACS'),
-              subtitle: const Text('Flow cytometry 분석 템플릿'),
-              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.facs),
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.biotech),
-              title: const Text('Cell Culture'),
-              subtitle: const Text('세포 배양 기록 템플릿'),
-              onTap: () => Navigator.pop(ctx, ExperimentTemplateType.cellCulture),
-            ),            
-          ],
+        child: SingleChildScrollView(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.biotech_outlined),
+                title: const Text('Western Blot'),
+                subtitle: const Text('WB 실험 기록 템플릿'),
+                onTap: () =>
+                    Navigator.pop(ctx, ExperimentTemplateType.westernBlot),
+              ),
+              ListTile(
+                leading: const Icon(Icons.science),
+                title: const Text('RT-PCR'),
+                subtitle: const Text('RNA / cDNA / Ct 기록 템플릿'),
+                onTap: () => Navigator.pop(ctx, ExperimentTemplateType.rtPcr),
+              ),
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('IF'),
+                subtitle: const Text('Immunofluorescence 템플릿'),
+                onTap: () =>
+                    Navigator.pop(ctx, ExperimentTemplateType.ifStaining),
+              ),
+              ListTile(
+                leading: const Icon(Icons.local_hospital_outlined),
+                title: const Text('IHC'),
+                subtitle: const Text('Immunohistochemistry 템플릿'),
+                onTap: () => Navigator.pop(ctx, ExperimentTemplateType.ihc),
+              ),
+              ListTile(
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('ELISA'),
+                subtitle: const Text('ELISA 실험 기록 템플릿'),
+                onTap: () => Navigator.pop(ctx, ExperimentTemplateType.elisa),
+              ),
+              ListTile(
+                leading: const Icon(Icons.scatter_plot_outlined),
+                title: const Text('FACS'),
+                subtitle: const Text('Flow cytometry 분석 템플릿'),
+                onTap: () => Navigator.pop(ctx, ExperimentTemplateType.facs),
+              ),
+              ListTile(
+                leading: const Icon(Icons.biotech),
+                title: const Text('Cell Culture'),
+                subtitle: const Text('세포 배양 기록 템플릿'),
+                onTap: () =>
+                    Navigator.pop(ctx, ExperimentTemplateType.cellCulture),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -436,6 +443,18 @@ ${dialogResult.combinedText.trim()}
 
               if (!mounted) return;
               await context.read<HomeVm>().refresh();
+            },
+          ),
+          IconButton(
+            tooltip: 'Figures',
+            icon: const Icon(Icons.dashboard_outlined),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const FiguresScreen(),
+                ),
+              );
             },
           ),
         ],
