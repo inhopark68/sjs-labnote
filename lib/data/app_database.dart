@@ -273,6 +273,21 @@ class DbFigurePanels extends Table {
   DateTimeColumn get updatedAt => dateTime()();
 }
 
+class DbNoteAttachments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  IntColumn get noteId =>
+      integer().references(DbNotes, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get filePath => text()();
+
+  TextColumn get mimeType => text().nullable()();
+
+  TextColumn get kind => text().withDefault(const Constant('image'))();
+
+  DateTimeColumn get createdAt => dateTime()();
+}
+
 // =====================================================
 // Database
 // =====================================================
@@ -285,6 +300,7 @@ class DbFigurePanels extends Table {
     DbNoteReferences,
     DbFigures,
     DbFigurePanels,
+    DbNoteAttachments,
   ],
 )
 class AppDatabase extends _$AppDatabase implements NotesRepository {
@@ -293,26 +309,31 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
   late final NoteItemsDao noteItemsDao = NoteItemsDao(this);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
-@override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) async {
-      await m.createAll();
-    },
-    onUpgrade: (m, from, to) async {
-      if (from < 5) {
-        await m.createTable(dbFigures);
-        await m.createTable(dbFigurePanels);
-      }
+        onCreate: (m) async {
+          await m.createAll();
+          await _createIndexes();
+        },
+        onUpgrade: (m, from, to) async {
+          await customStatement('PRAGMA foreign_keys = OFF;');
+          try {
+            if (from < 5) {
+              await _createMissingTablesIfNeeded(m);
+            }
 
-      if (from < 6) {
-        await m.addColumn(dbFigures, dbFigures.layoutType);
-        await m.addColumn(dbFigures, dbFigures.caption);
-      }
-    },
-  );
+            if (from < 6) {
+              await _addFigureColumnsIfNeeded();
+            }
+
+            if (from <7) {
+              await m.creatable(dbNoteAttachments);
+            }
+          },
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return driftDatabase(
@@ -581,7 +602,9 @@ class AppDatabase extends _$AppDatabase implements NotesRepository {
         ),
       );
     });
-}
+  }
+  
+
 
   Future<String> getNextPanelLabel(int figureId) async {
     final panels = await listFigurePanels(figureId);

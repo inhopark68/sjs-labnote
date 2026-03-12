@@ -17,8 +17,13 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
-import '../../data/app_database.dart';
-import '../../utils/quill_doc_utils.dart';
+import 'package:labnote/utils/quill_doc_utils.dart';
+import 'package:labnote/features/figures/figures_screen.dart';
+import 'package:provider/provider.dart';
+
+import 'package:labnote/data/app_database.dart';
+import 'package:labnote/features/figures/add_to_figure_dialog.dart';
+import 'package:labnote/features/figures/figures_vm.dart';
 
 // =====================================================
 // Item dialog payload
@@ -1950,6 +1955,34 @@ class _NoteDetailPageState extends State<NoteDetailPage>
               icon: const Icon(Icons.refresh),
               tooltip: '새로고침',
             ),
+            IconButton(
+              tooltip: 'Figure에 추가',
+              icon: const Icon(Icons.scatter_plot_outlined),
+              onPressed: _noteIsDeleted
+                  ? _blockedSnack
+                  : () async {
+                      final figuresVm = FiguresVm(context.read<AppDatabase>());
+                      await figuresVm.load();
+
+                      if (!context.mounted) return;
+
+                      final added = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => ChangeNotifierProvider.value(
+                          value: figuresVm,
+                          child: AddToFigureDialog(
+                            noteId: widget.noteId,
+                          ),
+                        ),
+                      );
+
+                      if (added == true && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Figure에 추가되었습니다.')),
+                        );
+                      }
+                    },
+            ),            
             PopupMenuButton<String>(
               onSelected: (v) {
                 switch (v) {
