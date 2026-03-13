@@ -1,17 +1,18 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:labnote/data/database/app_database.dart';
-import 'package:labnote/utils/image_utils.dart';
 import 'package:labnote/utils/note_image_utils.dart';
 import 'package:labnote/utils/quill_doc_utils.dart';
-import 'package:labnote/features/figures/add_to_figure_dialog.dart';
 
 class SelectableImageEmbedBuilder implements quill.EmbedBuilder {
   final quill.EmbedBuilder baseBuilder;
@@ -51,6 +52,20 @@ class SelectableImageEmbedBuilder implements quill.EmbedBuilder {
       child: child,
     );
   }
+}
+
+class _PreparedImageResult {
+  final File file;
+  final String mimeType;
+  final int width;
+  final int height;
+
+  const _PreparedImageResult({
+    required this.file,
+    required this.mimeType,
+    required this.width,
+    required this.height,
+  });
 }
 
 class NoteImageController {
@@ -155,36 +170,99 @@ class NoteImageController {
     );
   }
 
-  Future<double?> askMaxSizeMb(BuildContext context) {
-    final ctrl = TextEditingController(text: '1.0');
+  bool _shouldKeepAsPng(File inputFile) {
+    final ext = p.extension(inputFile.path).toLowerCase();
+    return ext == '.png';
+  }
 
-    return showDialog<double>(
+  Future<_PreparedImageResult> _prepareImageForFigureUpload({
+    required File inputFile,
+    required Directory outputDir,
+    required String filePrefix,
+    int maxWidth = 1200,
+    int jpegQuality = 88,
+  }) async {
+    final rawBytes = await inputFile.readAsBytes();
+    final decoded = img.decodeImage(rawBytes);
+
+    if (decoded == null) {
+      throw Exception('이미지를 읽을 수 없습니다.');
+    }
+
+    final baked = img.bakeOrientation(decoded);
+
+    img.Image output = baked;
+    if (baked.width > maxWidth) {
+      output = img.copyResize(
+        baked,
+        width: maxWidth,
+        interpolation: img.Interpolation.average,
+      );
+    }
+
+    final keepPng = _shouldKeepAsPng(inputFile);
+
+    late final Uint8List encodedBytes;
+    late final String extension;
+    late final String mimeType;
+
+    if (keepPng) {
+      encodedBytes = Uint8List.fromList(img.encodePng(output));
+      extension = '.png';
+      mimeType = 'image/png';
+    } else {
+      encodedBytes = Uint8List.fromList(
+        img.encodeJpg(output, quality: jpegQuality),
+      );
+      extension = '.jpg';
+      mimeType = 'image/jpeg';
+    }
+
+    final fileName =
+        '${filePrefix}${DateTime.now().millisecondsSinceEpoch}$extension';
+    final outputPath = p.join(outputDir.path, fileName);
+
+    final outFile = File(outputPath);
+    await outFile.writeAsBytes(encodedBytes, flush: true);
+
+    return _PreparedImageResult(
+      file: outFile,
+      mimeType: mimeType,
+      width: output.width,
+      height: output.height,
+    );
+  }
+
+  Future<void> _showProcessingDialog(BuildContext context) async {
+    showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('이미지 용량 제한'),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: '최대 MB (예: 1.0)',
+      barrierDismissible: false,
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Text('이미지 최적화 중…'),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = double.tryParse(ctrl.text.trim());
-              if (v == null || v <= 0) return;
-              Navigator.pop(ctx, v);
-            },
-            child: const Text('적용'),
-          ),
-        ],
       ),
     );
+  }
+
+  void _closeProcessingDialog(BuildContext context) {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
   }
 
   Future<bool> insertImageInto({
@@ -202,49 +280,61 @@ class NoteImageController {
     final source = await pickSourceSheet(context);
     if (source == null) return false;
 
-    final maxMb = await askMaxSizeMb(context);
-    if (maxMb == null) return false;
-
-    final picked = await picker.pickImage(source: source);
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 100,
+    );
     if (picked == null) return false;
 
-    final inputFile = File(picked.path);
-    final dir = await noteImageDir(noteId);
+    await _showProcessingDialog(context);
 
-    final outFile = await compressImageToTargetMb(
-      inputFile: inputFile,
-      targetMb: maxMb,
-      outputDir: dir,
-      filePrefix: filePrefix,
-    );
+    try {
+      final inputFile = File(picked.path);
+      final dir = await noteImageDir(noteId);
 
-    await db.insertNoteAttachment(
-      noteId: noteId,
-      filePath: outFile.path,
-      mimeType: 'image/*',
-      kind: 'image',
-    );
+      final prepared = await _prepareImageForFigureUpload(
+        inputFile: inputFile,
+        outputDir: dir,
+        filePrefix: filePrefix,
+        maxWidth: 1200,
+        jpegQuality: 88,
+      );
 
-    final embedPath = normalizeImageRef(outFile.path);
-    final embed = quill.BlockEmbed.image(embedPath);
+      await db.insertNoteAttachment(
+        noteId: noteId,
+        filePath: prepared.file.path,
+        mimeType: prepared.mimeType,
+        kind: 'image',
+      );
 
-    final docLength = controller.document.length;
-    final baseOffset = controller.selection.baseOffset;
+      final embedPath = normalizeImageRef(prepared.file.path);
+      final embed = quill.BlockEmbed.image(embedPath);
 
-    final index = (baseOffset >= 0 && baseOffset < docLength)
-        ? baseOffset
-        : max(0, docLength - 1);
+      final docLength = controller.document.length;
+      final baseOffset = controller.selection.baseOffset;
 
-    controller.replaceText(
-      index,
-      0,
-      embed,
-      TextSelection.collapsed(offset: index + 1),
-    );
+      final index = (baseOffset >= 0 && baseOffset < docLength)
+          ? baseOffset
+          : max(0, docLength - 1);
 
-    selectedBodyImagePath = embedPath;
-    onChanged();
-    return true;
+      controller.replaceText(
+        index,
+        0,
+        embed,
+        TextSelection.collapsed(offset: index + 1),
+      );
+
+      selectedBodyImagePath = embedPath;
+      onChanged();
+      return true;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('이미지 처리 실패: $e')),
+      );
+      return false;
+    } finally {
+      _closeProcessingDialog(context);
+    }
   }
 
   Future<bool> deleteSelectedBodyImage({

@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import 'package:labnote/controllers/note_editor_controller.dart';
@@ -16,17 +16,16 @@ import 'package:labnote/utils/note_delete_utils.dart';
 import 'package:labnote/utils/ocr_utils.dart';
 import 'package:labnote/utils/quill_doc_utils.dart';
 
+import 'package:labnote/widgets/note_attachment_preview.dart';
 import 'package:labnote/widgets/note_body_section.dart';
 import 'package:labnote/widgets/note_date_card.dart';
 import 'package:labnote/widgets/note_materials_section.dart';
 import 'package:labnote/widgets/note_reagents_section.dart';
 import 'package:labnote/widgets/note_references_section.dart';
-
 import 'package:labnote/widgets/note_title_section.dart';
+
 import 'package:labnote/utils/pick_date_time.dart';
-
 import 'package:labnote/features/figures/add_to_figure_dialog.dart';
-
 
 class NoteDetailPage extends StatefulWidget {
   final int noteId;
@@ -65,6 +64,9 @@ class _NoteDetailPageState extends State<NoteDetailPage>
   DateTime? _selectedNoteDate;
   Note? _note;
 
+  int? _selectedAttachmentId;
+  late Future<List<NoteAttachmentRow>> _attachmentsFuture;
+
   bool get _ocrSupported => !kIsWeb;
 
   @override
@@ -90,6 +92,8 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       noteId: widget.noteId,
       newIdBuilder: _newId,
     );
+
+    _attachmentsFuture = _db.listNoteAttachments(widget.noteId);
 
     WidgetsBinding.instance.addObserver(this);
 
@@ -137,10 +141,15 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       _itemsLoading = true;
     });
 
-    final noteAny = await _db.getNoteAny(widget.noteId);
-    final isDeleted = noteAny?.isDeleted ?? true;
+    final results = await Future.wait([
+      _db.getNoteAny(widget.noteId),
+      _itemsController.loadAll(),
+      _db.listNoteAttachments(widget.noteId),
+    ]);
 
-    await _itemsController.loadAll();
+    final noteAny = results[0] as Note?;
+    final attachments = results[2] as List<NoteAttachmentRow>;
+    final isDeleted = noteAny?.isDeleted ?? true;
 
     if (!mounted) return;
 
@@ -158,9 +167,15 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       _editor.suppressEditorListener = false;
     }
 
+    final stillExists = attachments.any((e) => e.id == _selectedAttachmentId);
+    if (!stillExists) {
+      _selectedAttachmentId = null;
+    }
+
     setState(() {
       _noteLoading = false;
       _itemsLoading = false;
+      _attachmentsFuture = Future.value(attachments);
     });
   }
 
@@ -233,6 +248,28 @@ class _NoteDetailPageState extends State<NoteDetailPage>
         ),
       );
     }
+  }
+
+  Future<void> _reloadAttachments() async {
+    final attachments = await _db.listNoteAttachments(widget.noteId);
+
+    if (!mounted) return;
+
+    final stillExists = attachments.any((e) => e.id == _selectedAttachmentId);
+
+    setState(() {
+      if (!stillExists) {
+        _selectedAttachmentId = null;
+      }
+      _attachmentsFuture = Future.value(attachments);
+    });
+  }
+
+  NoteAttachmentRow? _findSelectedAttachment(List<NoteAttachmentRow> items) {
+    for (final item in items) {
+      if (item.id == _selectedAttachmentId) return item;
+    }
+    return null;
   }
 
   String _noteImagePrefix() => 'img_';
@@ -444,16 +481,23 @@ class _NoteDetailPageState extends State<NoteDetailPage>
 
     if (picked == null) return;
 
-    await _db.updateNoteDate(widget.noteId, picked);
+    try {
+      await _db.updateNoteDate(widget.noteId, picked);
 
-    if (!mounted) return;
-    setState(() {
-      _selectedNoteDate = picked;
-    });
+      if (!mounted) return;
+      setState(() {
+        _selectedNoteDate = picked;
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('노트 날짜를 저장했습니다.')),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('노트 날짜를 저장했습니다.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('날짜 저장 실패: $e')),
+      );
+    }
   }
 
   Future<void> _clearNoteDate() async {
@@ -462,33 +506,27 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       return;
     }
 
-    await _db.updateNoteDate(widget.noteId, null);
+    try {
+      await _db.updateNoteDate(widget.noteId, null);
 
-    if (!mounted) return;
-    setState(() => _selectedNoteDate = null);
+      if (!mounted) return;
+      setState(() => _selectedNoteDate = null);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('노트 날짜를 제거했습니다.')),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('노트 날짜를 제거했습니다.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('날짜 제거 실패: $e')),
+      );
+    }
   }
 
   String _currentTitleForAppBar() {
     final t = _titleController.text.trim();
     return t.isEmpty ? '(제목 없음)' : t;
   }
-
-  String _formatDate(DateTime date) {
-    final yyyy = date.year.toString().padLeft(4, '0');
-    final mm = date.month.toString().padLeft(2, '0');
-    final dd = date.day.toString().padLeft(2, '0');
-
-    final hh = date.hour.toString().padLeft(2, '0');
-    final min = date.minute.toString().padLeft(2, '0');
-    final ss = date.second.toString().padLeft(2, '0');
-
-    return '$yyyy-$mm-$dd $hh:$min:$ss';
-  }
-
 
   String _formatSavedTime(DateTime dt) {
     final hh = dt.hour.toString().padLeft(2, '0');
@@ -582,10 +620,11 @@ class _NoteDetailPageState extends State<NoteDetailPage>
 
   Widget _buildFigureAttachSection() {
     return FutureBuilder<List<NoteAttachmentRow>>(
-      future: _db.listNoteAttachments(widget.noteId),
+      future: _attachmentsFuture,
       builder: (context, snapshot) {
         final items = snapshot.data ?? const <NoteAttachmentRow>[];
         final imageItems = items.where((e) => e.kind == 'image').toList();
+        final selectedAttachment = _findSelectedAttachment(imageItems);
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
@@ -610,65 +649,90 @@ class _NoteDetailPageState extends State<NoteDetailPage>
                 ),
                 const SizedBox(height: 12),
                 ...imageItems.map((attachment) {
-                  final file = File(attachment.filePath);
+                  final isSelected = _selectedAttachmentId == attachment.id;
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: file.existsSync()
-                              ? Image.file(
-                                  file,
-                                  width: 72,
-                                  height: 72,
-                                  fit: BoxFit.cover,
-                                )
-                              : Container(
-                                  width: 72,
-                                  height: 72,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainerHighest,
-                                  child: const Icon(Icons.image_not_supported),
-                                ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                attachment.filePath
-                                    .split(Platform.pathSeparator)
-                                    .last,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'attachment id: ${attachment.id}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 8),
-                              FilledButton.tonalIcon(
-                                onPressed: _noteIsDeleted
-                                    ? null
-                                    : () => _openAddToFigureDialog(attachment),
-                                icon: const Icon(
-                                  Icons.add_photo_alternate_outlined,
-                                ),
-                                label: const Text('Figure에 추가'),
-                              ),
-                            ],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        setState(() {
+                          _selectedAttachmentId =
+                              _selectedAttachmentId == attachment.id
+                                  ? null
+                                  : attachment.id;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primaryContainer
+                              : null,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).dividerColor,
+                            width: isSelected ? 2 : 1,
                           ),
                         ),
-                      ],
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            buildNoteAttachmentPreview(
+                              filePath: attachment.filePath,
+                              width: 72,
+                              height: 72,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          p.basename(attachment.filePath),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 8),
+                                          child: Icon(Icons.check_circle),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'attachment id: ${attachment.id}',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
                 }),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: (_noteIsDeleted || selectedAttachment == null)
+                        ? null
+                        : () => _openAddToFigureDialog(selectedAttachment),
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text('선택한 이미지 Figure에 추가'),
+                  ),
+                ),
               ],
             ),
           ),
@@ -676,6 +740,7 @@ class _NoteDetailPageState extends State<NoteDetailPage>
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     if (_noteLoading) {
@@ -757,14 +822,12 @@ class _NoteDetailPageState extends State<NoteDetailPage>
                     ),
                   ),
                 ),
-
               NoteDateCard(
                 noteDate: _selectedNoteDate,
                 onPickDate: _pickNoteDate,
                 onClearDate: _selectedNoteDate != null ? _clearNoteDate : null,
               ),
               const SizedBox(height: 8),
-
               NoteTitleSection(
                 controller: _titleController,
                 focusNode: _titleFocus,
@@ -773,7 +836,6 @@ class _NoteDetailPageState extends State<NoteDetailPage>
                 runOcrAndReturnText: _runOcrAndReturnText,
               ),
               const SizedBox(height: 12),
-
               NoteBodySection(
                 controller: _bodyQuill,
                 focusNode: _bodyFocus,
@@ -809,6 +871,7 @@ class _NoteDetailPageState extends State<NoteDetailPage>
                   );
 
                   if (inserted) {
+                    await _reloadAttachments();
                     _markDirtyAndDebounceSave(triggerRebuild: true);
                   }
                 },
@@ -831,16 +894,15 @@ class _NoteDetailPageState extends State<NoteDetailPage>
                         );
 
                         if (deleted) {
+                          await _reloadAttachments();
                           _markDirtyAndDebounceSave(triggerRebuild: true);
                         }
                       },
               ),
-
               const SizedBox(height: 16),
               _buildFigureAttachSection(),
               const SizedBox(height: 16),
-              const Divider(height: 32),              
-
+              const Divider(height: 32),
               if (_itemsLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),

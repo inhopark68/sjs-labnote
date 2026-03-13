@@ -1,5 +1,9 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'package:labnote/data/database/app_database.dart';
@@ -93,6 +97,7 @@ class _FigureDetailBody extends StatelessWidget {
 
   Future<void> _showCreatePanelDialog(BuildContext context) async {
     final vm = context.read<FigureDetailVm>();
+    final db = context.read<AppDatabase>();
     final suggestedLabel = await vm.getNextPanelLabel();
 
     if (!context.mounted) return;
@@ -102,48 +107,117 @@ class _FigureDetailBody extends StatelessWidget {
     final captionCtrl = TextEditingController();
     final noteIdCtrl = TextEditingController();
 
+    final picker = ImagePicker();
+    XFile? pickedImage;
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('새 Panel'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: labelCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Panel label',
-                  hintText: 'A',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('새 Panel'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: labelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Panel label',
+                    hintText: 'A',
+                  ),
                 ),
-              ),
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(labelText: '제목'),
-              ),
-              TextField(
-                controller: captionCtrl,
-                decoration: const InputDecoration(labelText: 'Caption'),
-                maxLines: 3,
-              ),
-              TextField(
-                controller: noteIdCtrl,
-                decoration: const InputDecoration(labelText: 'Source note id'),
-                keyboardType: TextInputType.number,
-              ),
-            ],
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: '제목'),
+                ),
+                TextField(
+                  controller: captionCtrl,
+                  decoration: const InputDecoration(labelText: 'Caption'),
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: noteIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Source note id',
+                    hintText: '이미지를 귀속시킬 note id',
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            pickedImage == null
+                                ? '선택된 이미지 없음'
+                                : pickedImage!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final file = await picker.pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 90,
+                            );
+                            if (file == null) return;
+                            setState(() {
+                              pickedImage = file;
+                            });
+                          },
+                          icon: const Icon(Icons.image_outlined),
+                          label: const Text('이미지 선택'),
+                        ),
+                      ],
+                    ),
+                    if (pickedImage != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(pickedImage!.path),
+                            height: 180,
+                            width: double.infinity,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) {
+                              return const Center(
+                                child: Text('선택한 이미지를 표시할 수 없습니다.'),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('추가'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('추가'),
-          ),
-        ],
       ),
     );
 
@@ -154,6 +228,30 @@ class _FigureDetailBody extends StatelessWidget {
     if (panelLabel.isEmpty) return;
 
     final sourceNoteId = int.tryParse(noteIdCtrl.text.trim());
+    int? sourceAttachmentId;
+
+    if (pickedImage != null) {
+      if (sourceNoteId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('이미지를 추가하려면 Source note id를 입력해야 합니다.'),
+          ),
+        );
+        return;
+      }
+
+      final savedFile = await _copyPickedImageToAppStorage(
+        pickedImage!,
+        sourceNoteId: sourceNoteId,
+      );
+
+      sourceAttachmentId = await db.insertNoteAttachment(
+        noteId: sourceNoteId,
+        filePath: savedFile.path,
+        mimeType: _guessMimeType(savedFile.path),
+        kind: 'image',
+      );
+    }
 
     await context.read<FigureDetailVm>().createPanel(
           panelLabel: panelLabel,
@@ -161,7 +259,51 @@ class _FigureDetailBody extends StatelessWidget {
           caption:
               captionCtrl.text.trim().isEmpty ? null : captionCtrl.text.trim(),
           sourceNoteId: sourceNoteId,
+          sourceAttachmentId: sourceAttachmentId,
         );
+  }
+
+  Future<File> _copyPickedImageToAppStorage(
+    XFile pickedImage, {
+    required int sourceNoteId,
+  }) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final imageDir = Directory(
+      p.join(appDir.path, 'figure_panel_images'),
+    );
+
+    if (!await imageDir.exists()) {
+      await imageDir.create(recursive: true);
+    }
+
+    final ext = p.extension(pickedImage.path).toLowerCase();
+    final safeExt = ext.isEmpty ? '.jpg' : ext;
+
+    final fileName =
+        'note_${sourceNoteId}_${DateTime.now().millisecondsSinceEpoch}$safeExt';
+    final savedPath = p.join(imageDir.path, fileName);
+
+    return File(pickedImage.path).copy(savedPath);
+  }
+
+  String _guessMimeType(String filePath) {
+    final ext = p.extension(filePath).toLowerCase();
+
+    switch (ext) {
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.webp':
+        return 'image/webp';
+      case '.gif':
+        return 'image/gif';
+      case '.bmp':
+        return 'image/bmp';
+      default:
+        return 'image/*';
+    }
   }
 }
 
@@ -308,7 +450,7 @@ class _FigureCanvas extends StatelessWidget {
               (p) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: SizedBox(
-                  height: 180,
+                  height: 260,
                   child: _PanelPreviewTile(panel: p),
                 ),
               ),
@@ -317,7 +459,7 @@ class _FigureCanvas extends StatelessWidget {
       );
     }
 
-    final crossAxisCount = 2;
+    const crossAxisCount = 2;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -327,7 +469,7 @@ class _FigureCanvas extends StatelessWidget {
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: layoutType == 'grid_2x2' ? 1.05 : 1.2,
+        childAspectRatio: layoutType == 'grid_2x2' ? 0.82 : 0.9,
       ),
       itemBuilder: (context, index) {
         return _PanelPreviewTile(panel: panels[index]);
@@ -345,7 +487,7 @@ class _PanelPreviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color? badgeColor;
+    Color badgeColor;
     switch (panel.status) {
       case 'selected':
         badgeColor = Colors.blue;
@@ -397,8 +539,16 @@ class _PanelPreviewTile extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: _PanelAttachmentPreview(
-              sourceAttachmentId: panel.sourceAttachmentId,
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 120),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: _PanelAttachmentPreview(
+                sourceAttachmentId: panel.sourceAttachmentId,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -406,7 +556,7 @@ class _PanelPreviewTile extends StatelessWidget {
             panel.title?.trim().isNotEmpty == true
                 ? panel.title!
                 : 'Panel ${panel.panelLabel}',
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleSmall,
           ),
@@ -423,7 +573,7 @@ class _PanelPreviewTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               panel.caption!,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -432,65 +582,101 @@ class _PanelPreviewTile extends StatelessWidget {
       ),
     );
   }
-  }
-  class _PanelAttachmentPreview extends StatelessWidget {
-    const _PanelAttachmentPreview({
-      required this.sourceAttachmentId,
-    });
+}
 
-    final int? sourceAttachmentId;
+class _PanelAttachmentPreview extends StatelessWidget {
+  const _PanelAttachmentPreview({
+    required this.sourceAttachmentId,
+  });
 
-    @override
-    Widget build(BuildContext context) {
-      if (sourceAttachmentId == null) {
-        return _emptyPreview(context);
-      }
+  final int? sourceAttachmentId;
 
-      final db = context.read<AppDatabase>();
+  @override
+  Widget build(BuildContext context) {
+    if (sourceAttachmentId == null) {
+      return _emptyPreview(context, message: '첨부 이미지 없음');
+    }
 
-      return FutureBuilder<NoteAttachmentRow?>(
-        future: db.getNoteAttachmentById(sourceAttachmentId!),
-        builder: (context, snapshot) {
-          final attachment = snapshot.data;
+    final db = context.read<AppDatabase>();
 
-          if (attachment == null || attachment.filePath.isEmpty) {
-            return _emptyPreview(context);
-          }
+    return FutureBuilder<NoteAttachmentRow?>(
+      future: db.getNoteAttachmentById(sourceAttachmentId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Container(
+            width: double.infinity,
+            height: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
 
-          final file = File(attachment.filePath);
+        if (snapshot.hasError) {
+          return _emptyPreview(context, message: '이미지 로드 오류');
+        }
 
-          if (!file.existsSync()) {
-            return _emptyPreview(context);
-          }
+        final attachment = snapshot.data;
+        if (attachment == null || attachment.filePath.isEmpty) {
+          return _emptyPreview(context, message: '첨부 정보 없음');
+        }
 
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+        final file = File(attachment.filePath);
+        if (!file.existsSync()) {
+          return _emptyPreview(context, message: '파일이 존재하지 않음');
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Image.file(
               file,
               width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _emptyPreview(context),
+              height: double.infinity,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  _emptyPreview(context, message: '이미지 표시 실패'),
             ),
-          );
-        },
-      );
-    }
-
-    Widget _emptyPreview(BuildContext context) {
-      return Container(
-        width: double.infinity,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Icon(
-          Icons.image_outlined,
-          size: 28,
-        ),
-      );
-    }
+          ),
+        );
+      },
+    );
   }
+
+  Widget _emptyPreview(BuildContext context, {required String message}) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.image_outlined, size: 28),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ReorderablePanelList extends StatelessWidget {
   const _ReorderablePanelList({
@@ -591,6 +777,8 @@ class _ReorderablePanelList extends StatelessWidget {
         initialTitle: panel.title,
         initialCaption: panel.caption,
         initialStatus: panel.status,
+        initialSourceNoteId: panel.sourceNoteId,
+        initialSourceAttachmentId: panel.sourceAttachmentId,
       );
       return;
     }
@@ -627,11 +815,22 @@ class _ReorderablePanelList extends StatelessWidget {
     String? initialTitle,
     String? initialCaption,
     required String initialStatus,
+    int? initialSourceNoteId,
+    int? initialSourceAttachmentId,
   }) async {
+    final db = context.read<AppDatabase>();
     final labelCtrl = TextEditingController(text: initialLabel);
     final titleCtrl = TextEditingController(text: initialTitle ?? '');
     final captionCtrl = TextEditingController(text: initialCaption ?? '');
+    final noteIdCtrl = TextEditingController(
+      text: initialSourceNoteId?.toString() ?? '',
+    );
+
     String status = initialStatus;
+    final picker = ImagePicker();
+
+    XFile? pickedImage;
+    bool removeExistingImage = false;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -655,16 +854,21 @@ class _ReorderablePanelList extends StatelessWidget {
                   decoration: const InputDecoration(labelText: 'Caption'),
                   maxLines: 3,
                 ),
+                TextField(
+                  controller: noteIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Source note id',
+                    hintText: '이미지를 귀속시킬 note id',
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: status,
+                  initialValue: status,
                   decoration: const InputDecoration(labelText: '상태'),
                   items: const [
                     DropdownMenuItem(value: 'draft', child: Text('draft')),
-                    DropdownMenuItem(
-                      value: 'selected',
-                      child: Text('selected'),
-                    ),
+                    DropdownMenuItem(value: 'selected', child: Text('selected')),
                     DropdownMenuItem(value: 'final', child: Text('final')),
                   ],
                   onChanged: (value) {
@@ -673,6 +877,118 @@ class _ReorderablePanelList extends StatelessWidget {
                       status = value;
                     });
                   },
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '이미지',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                if (pickedImage != null) ...[
+                  Container(
+                    height: 180,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        File(pickedImage!.path),
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    pickedImage!.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ] else if (removeExistingImage) ...[
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('이미지가 제거됩니다.'),
+                  ),
+                ] else if (initialSourceAttachmentId != null) ...[
+                  SizedBox(
+                    height: 180,
+                    width: double.infinity,
+                    child: _PanelAttachmentPreview(
+                      sourceAttachmentId: initialSourceAttachmentId,
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('등록된 이미지가 없습니다.'),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final file = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 90,
+                        );
+                        if (file == null) return;
+                        setState(() {
+                          pickedImage = file;
+                          removeExistingImage = false;
+                        });
+                      },
+                      icon: const Icon(Icons.image_outlined),
+                      label: const Text('새 이미지 선택'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          pickedImage = null;
+                          removeExistingImage = true;
+                        });
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('이미지 제거'),
+                    ),
+                    if (pickedImage != null || removeExistingImage)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            pickedImage = null;
+                            removeExistingImage = false;
+                          });
+                        },
+                        child: const Text('변경 취소'),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -694,16 +1010,48 @@ class _ReorderablePanelList extends StatelessWidget {
     if (ok != true) return;
     if (!context.mounted) return;
 
-    final panelLabel = labelCtrl.text.trim();
+    final panelLabel = labelCtrl.text.trim().toUpperCase();
     if (panelLabel.isEmpty) return;
+
+    final sourceNoteId = int.tryParse(noteIdCtrl.text.trim());
+
+    int? sourceAttachmentId = initialSourceAttachmentId;
+
+    if (removeExistingImage) {
+      sourceAttachmentId = null;
+    }
+
+    if (pickedImage != null) {
+      if (sourceNoteId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('새 이미지를 추가하려면 Source note id를 입력해야 합니다.'),
+          ),
+        );
+        return;
+      }
+
+      final savedFile = await _copyPickedImageToAppStorage(
+        pickedImage!,
+        sourceNoteId: sourceNoteId,
+      );
+
+      sourceAttachmentId = await db.insertNoteAttachment(
+        noteId: sourceNoteId,
+        filePath: savedFile.path,
+        mimeType: _guessMimeType(savedFile.path),
+        kind: 'image',
+      );
+    }
 
     await context.read<FigureDetailVm>().updatePanel(
           id: id,
           panelLabel: panelLabel,
           title: titleCtrl.text.trim().isEmpty ? null : titleCtrl.text.trim(),
-          caption:
-              captionCtrl.text.trim().isEmpty ? null : captionCtrl.text.trim(),
+          caption: captionCtrl.text.trim().isEmpty ? null : captionCtrl.text.trim(),
           status: status,
+          sourceNoteId: sourceNoteId,
+          sourceAttachmentId: sourceAttachmentId,
         );
   }
 }
