@@ -10,6 +10,49 @@ import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/features/figures/figures_vm.dart';
 import 'package:labnote/models/figure_panel_item.dart';
 
+Future<File> _copyPickedImageToAppStorage(
+  XFile pickedImage, {
+  required int sourceNoteId,
+}) async {
+  final appDir = await getApplicationDocumentsDirectory();
+  final imageDir = Directory(
+    p.join(appDir.path, 'figure_panel_images'),
+  );
+
+  if (!await imageDir.exists()) {
+    await imageDir.create(recursive: true);
+  }
+
+  final ext = p.extension(pickedImage.path).toLowerCase();
+  final safeExt = ext.isEmpty ? '.jpg' : ext;
+
+  final fileName =
+      'note_${sourceNoteId}_${DateTime.now().millisecondsSinceEpoch}$safeExt';
+  final savedPath = p.join(imageDir.path, fileName);
+
+  return File(pickedImage.path).copy(savedPath);
+}
+
+String _guessMimeType(String filePath) {
+  final ext = p.extension(filePath).toLowerCase();
+
+  switch (ext) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    case '.gif':
+      return 'image/gif';
+    case '.bmp':
+      return 'image/bmp';
+    default:
+      return 'image/*';
+  }
+}
+
 class FigureDetailScreen extends StatelessWidget {
   const FigureDetailScreen({
     super.key,
@@ -261,49 +304,6 @@ class _FigureDetailBody extends StatelessWidget {
           sourceNoteId: sourceNoteId,
           sourceAttachmentId: sourceAttachmentId,
         );
-  }
-
-  Future<File> _copyPickedImageToAppStorage(
-    XFile pickedImage, {
-    required int sourceNoteId,
-  }) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final imageDir = Directory(
-      p.join(appDir.path, 'figure_panel_images'),
-    );
-
-    if (!await imageDir.exists()) {
-      await imageDir.create(recursive: true);
-    }
-
-    final ext = p.extension(pickedImage.path).toLowerCase();
-    final safeExt = ext.isEmpty ? '.jpg' : ext;
-
-    final fileName =
-        'note_${sourceNoteId}_${DateTime.now().millisecondsSinceEpoch}$safeExt';
-    final savedPath = p.join(imageDir.path, fileName);
-
-    return File(pickedImage.path).copy(savedPath);
-  }
-
-  String _guessMimeType(String filePath) {
-    final ext = p.extension(filePath).toLowerCase();
-
-    switch (ext) {
-      case '.png':
-        return 'image/png';
-      case '.jpg':
-      case '.jpeg':
-        return 'image/jpeg';
-      case '.webp':
-        return 'image/webp';
-      case '.gif':
-        return 'image/gif';
-      case '.bmp':
-        return 'image/bmp';
-      default:
-        return 'image/*';
-    }
   }
 }
 
@@ -887,7 +887,6 @@ class _ReorderablePanelList extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-
                 if (pickedImage != null) ...[
                   Container(
                     height: 180,
@@ -947,7 +946,6 @@ class _ReorderablePanelList extends StatelessWidget {
                     child: const Text('등록된 이미지가 없습니다.'),
                   ),
                 ],
-
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
@@ -1014,7 +1012,6 @@ class _ReorderablePanelList extends StatelessWidget {
     if (panelLabel.isEmpty) return;
 
     final sourceNoteId = int.tryParse(noteIdCtrl.text.trim());
-
     int? sourceAttachmentId = initialSourceAttachmentId;
 
     if (removeExistingImage) {
@@ -1048,7 +1045,8 @@ class _ReorderablePanelList extends StatelessWidget {
           id: id,
           panelLabel: panelLabel,
           title: titleCtrl.text.trim().isEmpty ? null : titleCtrl.text.trim(),
-          caption: captionCtrl.text.trim().isEmpty ? null : captionCtrl.text.trim(),
+          caption:
+              captionCtrl.text.trim().isEmpty ? null : captionCtrl.text.trim(),
           status: status,
           sourceNoteId: sourceNoteId,
           sourceAttachmentId: sourceAttachmentId,

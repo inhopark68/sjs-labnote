@@ -155,7 +155,7 @@ class FigureDetailVm extends ChangeNotifier {
     await load();
   }
 
-Future<void> updatePanel({
+  Future<void> updatePanel({
     required int id,
     required String panelLabel,
     String? title,
@@ -174,7 +174,6 @@ Future<void> updatePanel({
       sourceAttachmentId: sourceAttachmentId,
     );
     await load();
-    notifyListeners();
   }
 
   Future<void> deletePanel(int id) async {

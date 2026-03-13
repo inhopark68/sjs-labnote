@@ -306,7 +306,6 @@ class DbNoteAttachments extends Table {
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
- 
 
   @override
   int get schemaVersion => 7;
@@ -352,5 +351,27 @@ class AppDatabase extends _$AppDatabase {
       CREATE INDEX IF NOT EXISTS idx_db_notes_list_order
       ON db_notes (is_deleted, is_pinned DESC, updated_at DESC, id DESC)
     ''');
+  }
+
+  Future<void> updateFigurePanel({
+    required int id,
+    required String panelLabel,
+    String? title,
+    String? caption,
+    required String status,
+    int? sourceNoteId,
+    int? sourceAttachmentId,
+  }) async {
+    await (update(dbFigurePanels)..where((t) => t.id.equals(id))).write(
+      DbFigurePanelsCompanion(
+        panelLabel: Value(panelLabel),
+        title: Value(title),
+        caption: Value(caption),
+        sourceNoteId: Value(sourceNoteId),
+        sourceAttachmentId: Value(sourceAttachmentId),
+        status: Value(status),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 }
