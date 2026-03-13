@@ -7,9 +7,11 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/utils/image_utils.dart';
 import 'package:labnote/utils/note_image_utils.dart';
 import 'package:labnote/utils/quill_doc_utils.dart';
+import 'package:labnote/features/figures/add_to_figure_dialog.dart';
 
 class SelectableImageEmbedBuilder implements quill.EmbedBuilder {
   final quill.EmbedBuilder baseBuilder;
@@ -52,12 +54,14 @@ class SelectableImageEmbedBuilder implements quill.EmbedBuilder {
 }
 
 class NoteImageController {
+  final AppDatabase db;
   final int noteId;
   final ImagePicker picker;
 
   String? selectedBodyImagePath;
 
   NoteImageController({
+    required this.db,
     required this.noteId,
     required this.picker,
   });
@@ -77,10 +81,8 @@ class NoteImageController {
         return SelectableImageEmbedBuilder(
           baseBuilder: builder,
           onTapImage: (imagePath) async {
-            if (controller == controller) {
-              selectedBodyImagePath = normalizeImageRef(imagePath);
-              onChanged();
-            }
+            selectedBodyImagePath = normalizeImageRef(imagePath);
+            onChanged();
           },
         );
       }
@@ -153,7 +155,7 @@ class NoteImageController {
     );
   }
 
-  Future<double?> askMaxSizeMb(BuildContext context) async {
+  Future<double?> askMaxSizeMb(BuildContext context) {
     final ctrl = TextEditingController(text: '1.0');
 
     return showDialog<double>(
@@ -214,6 +216,13 @@ class NoteImageController {
       targetMb: maxMb,
       outputDir: dir,
       filePrefix: filePrefix,
+    );
+
+    await db.insertNoteAttachment(
+      noteId: noteId,
+      filePath: outFile.path,
+      mimeType: 'image/*',
+      kind: 'image',
     );
 
     final embedPath = normalizeImageRef(outFile.path);

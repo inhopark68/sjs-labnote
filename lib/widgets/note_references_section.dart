@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/app_database.dart';
-
+import 'package:labnote/data/database/app_database.dart';
 class NoteReferencesSection extends StatelessWidget {
   final List<DbNoteReference> references;
   final bool noteIsDeleted;

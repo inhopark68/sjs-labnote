@@ -3,7 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:provider/provider.dart';
 
-import 'data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/home_vm.dart';
 import 'pages/note_detail_page.dart';

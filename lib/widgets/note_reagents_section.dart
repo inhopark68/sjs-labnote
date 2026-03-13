@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 
 class NoteReagentsSection extends StatelessWidget {
   final List<DbNoteReagent> reagents;

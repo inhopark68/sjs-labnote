@@ -1,47 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+// import 'package:labnote/data/database/app_database.dart';
+import 'package:labnote/features/figures/figures_screen.dart';
 import 'package:labnote/features/home/home_vm.dart';
-import 'package:labnote/features/reagents/add_reagent_draft_dialog.dart';
-import 'package:labnote/features/reagents/reagent_draft.dart';
-import 'package:labnote/features/scan/scan_result.dart';
-import 'package:labnote/features/scan/scan_result_dialog.dart';
 import 'package:labnote/features/trash/trash_screen.dart';
 import 'package:labnote/models/note_list_item.dart';
 import 'package:labnote/pages/note_detail_page.dart';
-import 'package:labnote/services/image_scan_service.dart';
-import 'package:labnote/utils/notion_date_format.dart';
 import 'package:labnote/utils/note_grouping.dart';
-import 'package:labnote/features/figures/figures_screen.dart';
-import 'package:labnote/features/figures/add_to_figure_dialog.dart';
-import 'package:labnote/features/figures/figures_vm.dart';
-
-ReagentDraft buildReagentDraftFromScan(ScanFromImageResult result) {
-  String name = '스캔 시약';
-
-  if ((result.parsed.company?.isNotEmpty ?? false) &&
-      (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
-    name = '${result.parsed.company} ${result.parsed.catalogNumber}';
-  } else if (result.parsed.catalogNumber?.isNotEmpty ?? false) {
-    name = '시약 ${result.parsed.catalogNumber}';
-  } else if (result.text.trim().isNotEmpty) {
-    final firstLine = result.text.trim().split('\n').first.trim();
-    if (firstLine.isNotEmpty) {
-      name = firstLine.length > 40 ? firstLine.substring(0, 40) : firstLine;
-    }
-  }
-
-  return ReagentDraft(
-    name: name,
-    company: result.parsed.company,
-    catalogNumber: result.parsed.catalogNumber,
-    lotNumber: result.parsed.lotNumber,
-    memo: result.text.trim().isEmpty ? null : result.text.trim(),
-  );
-}
+import 'package:labnote/utils/notion_date_format.dart';
 
 enum NewNoteType {
   plain,
@@ -67,52 +36,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollCtrl = ScrollController();
-  final ImagePicker _picker = ImagePicker();
-  final ImageScanService _imageScanService = ImageScanService();
 
   Timer? _dateRefreshTimer;
 
   bool _inited = false;
   HomeVm? _vm;
-
-  String _buildScanNoteTitle(ScanFromImageResult result) {
-    String title;
-
-    if ((result.parsed.company?.isNotEmpty ?? false) &&
-        (result.parsed.catalogNumber?.isNotEmpty ?? false)) {
-      title = '${result.parsed.company} ${result.parsed.catalogNumber}';
-    } else if (result.parsed.catalogNumber?.isNotEmpty ?? false) {
-      title = '시약 ${result.parsed.catalogNumber}';
-    } else if (result.codes.isNotEmpty) {
-      final first = result.codes.first;
-      final value = (first.displayValue ?? first.rawValue ?? '').trim();
-      title = value.isNotEmpty ? '스캔: $value' : '스캔 가져오기';
-    } else {
-      final text = result.text.trim();
-      if (text.isNotEmpty) {
-        final firstLine = text.split('\n').first.trim();
-        title = firstLine.isNotEmpty ? firstLine : '스캔 가져오기';
-      } else {
-        title = '스캔 가져오기';
-      }
-    }
-
-    return title.length > 40 ? title.substring(0, 40) : title;
-  }
-
-  ReagentDraft _buildReagentDraftFromScanResult(
-    ScanFromImageResult result,
-    String combinedText,
-  ) {
-    final base = buildReagentDraftFromScan(result);
-    return ReagentDraft(
-      name: base.name,
-      company: base.company,
-      catalogNumber: base.catalogNumber,
-      lotNumber: base.lotNumber,
-      memo: combinedText.trim().isEmpty ? null : combinedText.trim(),
-    );
-  }
 
   Future<NewNoteType?> _pickNewNoteType() async {
     return showModalBottomSheet<NewNoteType>(
@@ -250,109 +178,13 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImageAndScan() async {
-    try {
-      final messenger = ScaffoldMessenger.of(context);
-
-      final file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
-        maxHeight: 1280,
-        imageQuality: 80,
-      );
-      if (file == null) return;
-
-      if (!mounted) return;
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('이미지 분석 중...')),
-        );
-
-      final result = await _imageScanService.scanImage(file.path);
-
-      if (!mounted) return;
-      messenger.clearSnackBars();
-
-      if (result.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('인식된 QR/OCR 정보가 없습니다.')),
-        );
-        return;
-      }
-
-      final dialogResult = await showDialog<ScanDialogResult>(
-        context: context,
-        builder: (_) => ScanResultDialog(result: result),
-      );
-
-      if (dialogResult == null) return;
-
-      if (dialogResult.action == ScanDialogAction.insertNote) {
-        final vm = context.read<HomeVm>();
-        final title = _buildScanNoteTitle(result);
-
-        final noteId = await vm.createNoteFromScannedText(
-          title: title,
-          body: '''
-실험 목적
-- 
-
-실험 방법
-- 
-
-실험 내용
-${dialogResult.combinedText.trim()}
-''',
-        );
-
-        if (!mounted) return;
-
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => NoteDetailPage(noteId: noteId),
-          ),
-        );
-
-        if (!mounted) return;
-        await vm.refresh();
-        return;
-      }
-
-      if (dialogResult.action == ScanDialogAction.addReagent) {
-        final draft = _buildReagentDraftFromScanResult(
-          result,
-          dialogResult.combinedText,
-        );
-
-        final submit = await showDialog<ReagentDraftSubmitResult>(
-          context: context,
-          builder: (_) => AddReagentDraftDialog(
-            initialDraft: draft,
-          ),
-        );
-
-        if (submit == null) return;
-
-        debugPrint('reagent name=${submit.name}');
-        debugPrint('company=${submit.company}');
-        debugPrint('catalogNumber=${submit.catalogNumber}');
-        debugPrint('lotNumber=${submit.lotNumber}');
-        debugPrint('memo=${submit.memo}');
-      }
-    } catch (e, st) {
-      debugPrint('OCR scan failed: $e');
-      debugPrint('$st');
-
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text('이미지 분석 실패: $e')),
-        );
-    }
+  Future<void> _showScanDisabledMessage() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('스캔 기능 파일이 없어 현재 비활성화되어 있습니다.'),
+      ),
+    );
   }
 
   Future<void> _createNewNote() async {
@@ -385,11 +217,9 @@ ${dialogResult.combinedText.trim()}
           case ExperimentTemplateType.elisa:
             id = await vm.insertElisaNoteAndReturnId();
             break;
-
           case ExperimentTemplateType.facs:
             id = await vm.insertFacsNoteAndReturnId();
             break;
-
           case ExperimentTemplateType.cellCulture:
             id = await vm.insertCellCultureNoteAndReturnId();
             break;
@@ -428,7 +258,7 @@ ${dialogResult.combinedText.trim()}
           IconButton(
             tooltip: '사진에서 QR/OCR 읽기',
             icon: const Icon(Icons.qr_code_scanner),
-            onPressed: _pickImageAndScan,
+            onPressed: _showScanDisabledMessage,
           ),
           const _SearchToggleAction(),
           const _RefreshAction(),
@@ -761,7 +591,9 @@ class _NoteTile extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
@@ -785,7 +617,6 @@ class _NoteTile extends StatelessWidget {
             ),
           ],
         ),
-        
         trailing: IconButton(
           tooltip: item.isPinned ? '고정 해제' : '상단 고정',
           icon: Icon(

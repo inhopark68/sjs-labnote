@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:labnote/data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/features/figures/figures_vm.dart';
 
 class AddToFigureDialog extends StatefulWidget {
   const AddToFigureDialog({
     super.key,
     required this.noteId,
+    required this.attachmentId,
+    this.initialTitle,
+    this.initialCaption,
   });
 
   final int noteId;
+  final int attachmentId;
+  final String? initialTitle;
+  final String? initialCaption;
 
   @override
   State<AddToFigureDialog> createState() => _AddToFigureDialogState();
@@ -19,10 +25,21 @@ class AddToFigureDialog extends StatefulWidget {
 class _AddToFigureDialogState extends State<AddToFigureDialog> {
   int? selectedFigureId;
   final TextEditingController panelCtrl = TextEditingController();
+  late final TextEditingController titleCtrl;
+  late final TextEditingController captionCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    titleCtrl = TextEditingController(text: widget.initialTitle ?? '');
+    captionCtrl = TextEditingController(text: widget.initialCaption ?? '');
+  }
 
   @override
   void dispose() {
     panelCtrl.dispose();
+    titleCtrl.dispose();
+    captionCtrl.dispose();
     super.dispose();
   }
 
@@ -55,7 +72,7 @@ class _AddToFigureDialogState extends State<AddToFigureDialog> {
                 ),
               ),
             DropdownButtonFormField<int>(
-              value: selectedFigureId,
+              initialValue: selectedFigureId,
               decoration: const InputDecoration(
                 labelText: 'Figure',
               ),
@@ -93,6 +110,24 @@ class _AddToFigureDialogState extends State<AddToFigureDialog> {
               ),
               enabled: vm.figures.isNotEmpty,
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Panel title',
+              ),
+              enabled: vm.figures.isNotEmpty,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: captionCtrl,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Panel caption',
+              ),
+              enabled: vm.figures.isNotEmpty,
+            ),
           ],
         ),
       ),
@@ -115,7 +150,14 @@ class _AddToFigureDialogState extends State<AddToFigureDialog> {
                   await db.insertFigurePanel(
                     figureId: figureId,
                     panelLabel: label,
+                    title: titleCtrl.text.trim().isEmpty
+                        ? null
+                        : titleCtrl.text.trim(),
+                    caption: captionCtrl.text.trim().isEmpty
+                        ? null
+                        : captionCtrl.text.trim(),
                     sourceNoteId: widget.noteId,
+                    sourceAttachmentId: widget.attachmentId,
                   );
 
                   if (!mounted) return;

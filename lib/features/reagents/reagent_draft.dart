@@ -12,4 +12,20 @@ class ReagentDraft {
     this.lotNumber,
     this.memo,
   });
+
+  ReagentDraft copyWith({
+    String? name,
+    String? company,
+    String? catalogNumber,
+    String? lotNumber,
+    String? memo,
+  }) {
+    return ReagentDraft(
+      name: name ?? this.name,
+      company: company ?? this.company,
+      catalogNumber: catalogNumber ?? this.catalogNumber,
+      lotNumber: lotNumber ?? this.lotNumber,
+      memo: memo ?? this.memo,
+    );
+  }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:labnote/data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/models/figure_list_item.dart';
 import 'package:labnote/models/figure_panel_item.dart';
 

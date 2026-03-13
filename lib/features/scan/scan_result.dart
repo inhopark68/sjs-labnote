@@ -23,11 +23,11 @@ class ParsedScanFields {
     this.companyCandidates = const [],
   });
 
-  bool get hasAny =>
-      (lotNumber?.isNotEmpty ?? false) ||
-      (catalogNumber?.isNotEmpty ?? false) ||
-      (company?.isNotEmpty ?? false) ||
-      companyCandidates.isNotEmpty;
+  bool get isEmpty =>
+      (lotNumber == null || lotNumber!.trim().isEmpty) &&
+      (catalogNumber == null || catalogNumber!.trim().isEmpty) &&
+      (company == null || company!.trim().isEmpty) &&
+      companyCandidates.isEmpty;
 }
 
 class ScanFromImageResult {
@@ -36,12 +36,10 @@ class ScanFromImageResult {
   final ParsedScanFields parsed;
 
   const ScanFromImageResult({
-    required this.codes,
-    required this.text,
-    required this.parsed,
+    this.codes = const [],
+    this.text = '',
+    this.parsed = const ParsedScanFields(),
   });
 
-  bool get hasCodes => codes.isNotEmpty;
-  bool get hasText => text.trim().isNotEmpty;
-  bool get isEmpty => !hasCodes && !hasText && !parsed.hasAny;
+  bool get isEmpty => codes.isEmpty && text.trim().isEmpty && parsed.isEmpty;
 }

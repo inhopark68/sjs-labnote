@@ -11,8 +11,7 @@ import 'package:labnote/controllers/note_editor_controller.dart';
 import 'package:labnote/controllers/note_image_controller.dart';
 import 'package:labnote/controllers/note_items_controller.dart';
 
-import 'package:labnote/data/app_database.dart';
-
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/utils/note_delete_utils.dart';
 import 'package:labnote/utils/ocr_utils.dart';
 import 'package:labnote/utils/quill_doc_utils.dart';
@@ -26,6 +25,7 @@ import 'package:labnote/widgets/note_references_section.dart';
 import 'package:labnote/widgets/note_title_section.dart';
 import 'package:labnote/utils/pick_date_time.dart';
 
+import 'package:labnote/features/figures/add_to_figure_dialog.dart';
 
 
 class NoteDetailPage extends StatefulWidget {
@@ -80,6 +80,7 @@ class _NoteDetailPageState extends State<NoteDetailPage>
     );
 
     _imageController = NoteImageController(
+      db: _db,
       noteId: widget.noteId,
       picker: _picker,
     );
@@ -558,6 +559,123 @@ class _NoteDetailPageState extends State<NoteDetailPage>
     );
   }
 
+  Future<void> _openAddToFigureDialog(NoteAttachmentRow attachment) async {
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (_) => AddToFigureDialog(
+        noteId: widget.noteId,
+        attachmentId: attachment.id,
+        initialTitle: _titleController.text.trim().isEmpty
+            ? null
+            : _titleController.text.trim(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (added == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Figure에 추가했습니다.')),
+      );
+    }
+  }
+
+  Widget _buildFigureAttachSection() {
+    return FutureBuilder<List<NoteAttachmentRow>>(
+      future: _db.listNoteAttachments(widget.noteId),
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? const <NoteAttachmentRow>[];
+        final imageItems = items.where((e) => e.kind == 'image').toList();
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (imageItems.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Figure로 추가',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                ...imageItems.map((attachment) {
+                  final file = File(attachment.filePath);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: file.existsSync()
+                              ? Image.file(
+                                  file,
+                                  width: 72,
+                                  height: 72,
+                                  fit: BoxFit.cover,
+                                )
+                              : Container(
+                                  width: 72,
+                                  height: 72,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
+                                  child: const Icon(Icons.image_not_supported),
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                attachment.filePath
+                                    .split(Platform.pathSeparator)
+                                    .last,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'attachment id: ${attachment.id}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 8),
+                              FilledButton.tonalIcon(
+                                onPressed: _noteIsDeleted
+                                    ? null
+                                    : () => _openAddToFigureDialog(attachment),
+                                icon: const Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                ),
+                                label: const Text('Figure에 추가'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
   @override
   Widget build(BuildContext context) {
     if (_noteLoading) {
@@ -719,7 +837,9 @@ class _NoteDetailPageState extends State<NoteDetailPage>
               ),
 
               const SizedBox(height: 16),
-              const Divider(height: 32),
+              _buildFigureAttachSection(),
+              const SizedBox(height: 16),
+              const Divider(height: 32),              
 
               if (_itemsLoading)
                 const Padding(

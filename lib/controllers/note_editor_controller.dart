@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
-import 'package:labnote/data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/utils/quill_doc_utils.dart';
 
 class NoteEditorController {

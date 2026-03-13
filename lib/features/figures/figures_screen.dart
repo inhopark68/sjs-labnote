@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:labnote/data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/features/figures/figure_detail_screen.dart';
 import 'package:labnote/features/figures/figures_vm.dart';
 

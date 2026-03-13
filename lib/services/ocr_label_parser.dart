@@ -54,13 +54,25 @@ class OcrLabelParser {
     final normalized = _normalize(text);
 
     final lot = _extractFirst(normalized, [
-      RegExp(r'(?i)\b(?:lot|lot no|lot number|batch)\b[:\s\-]*([A-Z0-9\-_/\.]+)'),
-      RegExp(r'(?i)\bL[/\s]?N\b[:\s\-]*([A-Z0-9\-_/\.]+)'),
+      RegExp(
+        r'\b(?:lot|lot no|lot number|batch)\b[:\s-]*([A-Z0-9._/\-]+)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'\bL[/\s]?N\b[:\s-]*([A-Z0-9._/\-]+)',
+        caseSensitive: false,
+      ),
     ]);
 
     final catalog = _extractFirst(normalized, [
-      RegExp(r'(?i)\b(?:cat|cat no|catalog no|catalog number|product no|prod no|ref)\b[:\s#\-]*([A-Z0-9\-_/\.]+)'),
-      RegExp(r'(?i)\bP[/\s]?N\b[:\s\-]*([A-Z0-9\-_/\.]+)'),
+      RegExp(
+        r'\b(?:cat|cat no|catalog no|catalog number|product no|prod no|ref)\b[:\s#-]*([A-Z0-9._/\-]+)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'\bP[/\s]?N\b[:\s-]*([A-Z0-9._/\-]+)',
+        caseSensitive: false,
+      ),
     ]);
 
     final companyCandidates = _extractCompanies(normalized);
@@ -98,7 +110,10 @@ class OcrLabelParser {
     final found = <String>{};
 
     for (final company in _knownCompanies) {
-      final pattern = RegExp(RegExp.escape(company), caseSensitive: false);
+      final pattern = RegExp(
+        RegExp.escape(company),
+        caseSensitive: false,
+      );
       if (pattern.hasMatch(text)) {
         found.add(company);
       }
@@ -120,7 +135,9 @@ class OcrLabelParser {
   }
 
   bool _looksLikeCompany(String line) {
-    if (line.length < 3 || line.length > 40) return false;
+    if (line.length < 3 || line.length > 40) {
+      return false;
+    }
 
     final lower = line.toLowerCase();
 
@@ -138,14 +155,20 @@ class OcrLabelParser {
     ];
 
     for (final keyword in bannedKeywords) {
-      if (lower.contains(keyword)) return false;
+      if (lower.contains(keyword)) {
+        return false;
+      }
     }
 
     final hasLetters = RegExp(r'[A-Za-z가-힣]').hasMatch(line);
-    if (!hasLetters) return false;
+    if (!hasLetters) {
+      return false;
+    }
 
-    final tooManySymbols = RegExp(r'^[A-Z0-9\-_/\.\s]+$').hasMatch(line);
-    if (tooManySymbols) return false;
+    final tooManySymbols = RegExp(r'^[A-Z0-9._/\-\s]+$').hasMatch(line);
+    if (tooManySymbols) {
+      return false;
+    }
 
     return true;
   }

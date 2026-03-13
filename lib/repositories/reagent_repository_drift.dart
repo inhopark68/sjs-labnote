@@ -1,5 +1,4 @@
-import '../data/app_database.dart';
-
+import 'package:labnote/data/database/app_database.dart';
 abstract class ReagentRepository {
   Future<String> createOrUpdateFromOcr({
     required String name,

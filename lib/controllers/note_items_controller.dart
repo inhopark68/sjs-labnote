@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:labnote/data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 import 'package:labnote/widgets/doi_entry_dialog.dart';
 import 'package:labnote/widgets/note_item_dialog.dart';
 

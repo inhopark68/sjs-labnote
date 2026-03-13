@@ -1749,13 +1749,17 @@ class $DbFiguresTable extends DbFigures
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
       'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
       'updated_at', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -1814,14 +1818,10 @@ class $DbFiguresTable extends DbFigures
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
     }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
-    } else if (isInserting) {
-      context.missing(_updatedAtMeta);
     }
     return context;
   }
@@ -2051,11 +2051,9 @@ class DbFiguresCompanion extends UpdateCompanion<DbFigure> {
     this.layoutType = const Value.absent(),
     this.caption = const Value.absent(),
     this.sortOrder = const Value.absent(),
-    required DateTime createdAt,
-    required DateTime updatedAt,
-  })  : title = Value(title),
-        createdAt = Value(createdAt),
-        updatedAt = Value(updatedAt);
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : title = Value(title);
   static Insertable<DbFigure> custom({
     Expression<int>? id,
     Expression<String>? project,
@@ -2226,13 +2224,17 @@ class $DbFigurePanelsTable extends DbFigurePanels
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
       'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
       'updated_at', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -2305,14 +2307,10 @@ class $DbFigurePanelsTable extends DbFigurePanels
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
     }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
-    } else if (isInserting) {
-      context.missing(_updatedAtMeta);
     }
     return context;
   }
@@ -2593,12 +2591,10 @@ class DbFigurePanelsCompanion extends UpdateCompanion<DbFigurePanel> {
     this.sourceAttachmentId = const Value.absent(),
     this.status = const Value.absent(),
     this.sortOrder = const Value.absent(),
-    required DateTime createdAt,
-    required DateTime updatedAt,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : figureId = Value(figureId),
-        panelLabel = Value(panelLabel),
-        createdAt = Value(createdAt),
-        updatedAt = Value(updatedAt);
+        panelLabel = Value(panelLabel);
   static Insertable<DbFigurePanel> custom({
     Expression<int>? id,
     Expression<int>? figureId,
@@ -2760,7 +2756,9 @@ class $DbNoteAttachmentsTable extends DbNoteAttachments
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
       'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns =>
       [id, noteId, filePath, mimeType, kind, createdAt];
@@ -2800,8 +2798,6 @@ class $DbNoteAttachmentsTable extends DbNoteAttachments
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
     }
     return context;
   }
@@ -2975,10 +2971,9 @@ class DbNoteAttachmentsCompanion extends UpdateCompanion<DbNoteAttachment> {
     required String filePath,
     this.mimeType = const Value.absent(),
     this.kind = const Value.absent(),
-    required DateTime createdAt,
+    this.createdAt = const Value.absent(),
   })  : noteId = Value(noteId),
-        filePath = Value(filePath),
-        createdAt = Value(createdAt);
+        filePath = Value(filePath);
   static Insertable<DbNoteAttachment> custom({
     Expression<int>? id,
     Expression<int>? noteId,
@@ -4062,8 +4057,8 @@ typedef $$DbFiguresTableCreateCompanionBuilder = DbFiguresCompanion Function({
   Value<String> layoutType,
   Value<String?> caption,
   Value<int> sortOrder,
-  required DateTime createdAt,
-  required DateTime updatedAt,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
 });
 typedef $$DbFiguresTableUpdateCompanionBuilder = DbFiguresCompanion Function({
   Value<int> id,
@@ -4302,8 +4297,8 @@ class $$DbFiguresTableTableManager extends RootTableManager<
             Value<String> layoutType = const Value.absent(),
             Value<String?> caption = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
-            required DateTime createdAt,
-            required DateTime updatedAt,
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
           }) =>
               DbFiguresCompanion.insert(
             id: id,
@@ -4374,8 +4369,8 @@ typedef $$DbFigurePanelsTableCreateCompanionBuilder = DbFigurePanelsCompanion
   Value<int?> sourceAttachmentId,
   Value<String> status,
   Value<int> sortOrder,
-  required DateTime createdAt,
-  required DateTime updatedAt,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
 });
 typedef $$DbFigurePanelsTableUpdateCompanionBuilder = DbFigurePanelsCompanion
     Function({
@@ -4655,8 +4650,8 @@ class $$DbFigurePanelsTableTableManager extends RootTableManager<
             Value<int?> sourceAttachmentId = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
-            required DateTime createdAt,
-            required DateTime updatedAt,
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
           }) =>
               DbFigurePanelsCompanion.insert(
             id: id,
@@ -4734,7 +4729,7 @@ typedef $$DbNoteAttachmentsTableCreateCompanionBuilder
   required String filePath,
   Value<String?> mimeType,
   Value<String> kind,
-  required DateTime createdAt,
+  Value<DateTime> createdAt,
 });
 typedef $$DbNoteAttachmentsTableUpdateCompanionBuilder
     = DbNoteAttachmentsCompanion Function({
@@ -4947,7 +4942,7 @@ class $$DbNoteAttachmentsTableTableManager extends RootTableManager<
             required String filePath,
             Value<String?> mimeType = const Value.absent(),
             Value<String> kind = const Value.absent(),
-            required DateTime createdAt,
+            Value<DateTime> createdAt = const Value.absent(),
           }) =>
               DbNoteAttachmentsCompanion.insert(
             id: id,

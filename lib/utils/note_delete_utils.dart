@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../data/app_database.dart';
+import 'package:labnote/data/database/app_database.dart';
 
 Future<void> hardDeleteNoteWithAssets({
   required AppDatabase db,

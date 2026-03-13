@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'db/app_database_stub.dart' as stub;
-import 'state/database_manager.dart';
-import 'data/dao/note_dao.dart';
-import 'services/attachment_storage.dart';
-import 'services/image_compressor.dart';
-import 'repositories/reagent_repository_drift.dart';
-import 'repositories/cell_repository_drift.dart';
-import 'repositories/equipment_repository_drift.dart';
+import 'data/database/app_database.dart';
 import 'features/home/home_vm.dart';
 import 'features/home/home_screen.dart';
+import 'features/figures/figures_vm.dart';
+import 'services/attachment_storage.dart';
+import 'services/image_compressor.dart';
 
 class AppBootstrap extends StatelessWidget {
   const AppBootstrap({super.key});
@@ -19,37 +15,32 @@ class AppBootstrap extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) =>
-              DatabaseManager(stub.AppDatabase(stub.openConnection())),
+        Provider<AppDatabase>(
+          create: (_) => AppDatabase(),
+          dispose: (_, db) => db.close(),
         ),
 
-        ProxyProvider<DatabaseManager, NoteDao>(
-          update: (_, mgr, _) => NoteDao(mgr.db),
+        Provider<AttachmentStorage>(
+          create: (_) => createAttachmentStorage(),
         ),
 
-        // ✅ 웹/모바일 조건부 구현 사용
-        Provider<AttachmentStorage>(create: (_) => createAttachmentStorage()),
-
-        Provider(
-          create: (_) => const ImageCompressor(maxSide: 2000, jpegQuality: 80),
+        Provider<ImageCompressor>(
+          create: (_) => const ImageCompressor(
+            maxSide: 2000,
+            jpegQuality: 80,
+          ),
         ),
 
-        ProxyProvider<DatabaseManager, ReagentRepositoryDrift>(
-          update: (_, mgr, _) => ReagentRepositoryDrift(mgr.db),
-        ),
-        ProxyProvider<DatabaseManager, CellRepositoryDrift>(
-          update: (_, mgr, _) => CellRepositoryDrift(mgr.db),
-        ),
-        ProxyProvider<DatabaseManager, EquipmentRepositoryDrift>(
-          update: (_, mgr, _) => EquipmentRepositoryDrift(mgr.db),
+        ChangeNotifierProvider<HomeVm>(
+          create: (context) => HomeVm(
+            context.read<AppDatabase>(),
+          )..init(),
         ),
 
-        // ✅ empty 제거: create에서도 db 주입
-        ChangeNotifierProxyProvider<DatabaseManager, HomeVm>(
-          create: (context) =>
-              HomeVm(context.read<DatabaseManager>().db)..init(),
-          update: (_, mgr, _) => HomeVm(mgr.db)..init(),
+        ChangeNotifierProvider<FiguresVm>(
+          create: (context) => FiguresVm(
+            context.read<AppDatabase>(),
+          ),
         ),
       ],
       child: const MaterialApp(
